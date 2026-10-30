@@ -230,6 +230,8 @@ export interface TournamentConfig {
   registrationCustomLink?: string;
   registrationCustomButtonText?: string;
   registrationCustomLinkNewTab?: boolean;
+  // Pengaman Tombol Manajemen Grup & Jadwal (Acak, Perbarui Jadwal, Kosongkan)
+  lockGroupStageActions?: boolean;
 }
 
 export type RegistrationButtonMode = 'INTERNAL_FORM' | 'CUSTOM_LINK' | 'HIDDEN';

@@ -18,6 +18,10 @@ import {
   Users,
   MapPin,
   Trophy,
+  Lock,
+  Unlock,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 
 export const GroupStageDragDropManager: React.FC = () => {
@@ -81,7 +85,30 @@ export const GroupStageDragDropManager: React.FC = () => {
     t => !assignedTeamNames.has(t.teamName.trim().toLowerCase())
   );
 
+  // Status Pengaman Tombol Aksi Kritis (Acak, Perbarui Jadwal, Kosongkan Grup)
+  // Default: true (Terkunci / Nonaktif demi keamanan turnamen)
+  const isActionsLocked = config.lockGroupStageActions !== false;
+
+  const handleToggleLock = () => {
+    const nextLocked = !isActionsLocked;
+    updateConfig({ lockGroupStageActions: nextLocked });
+    setMessage({
+      text: nextLocked
+        ? '🔒 Tombol Acak, Perbarui Jadwal, dan Kosongkan Grup berhasil DIMATIKAN demi keamanan data.'
+        : '🔓 Tombol Acak, Perbarui Jadwal, dan Kosongkan Grup berhasil DIAKTIFKAN. Harap berhati-hati saat menekan tombol aksi!',
+      type: nextLocked ? 'success' : 'error',
+    });
+  };
+
   const handleRandomize = () => {
+    if (isActionsLocked) {
+      setMessage({
+        text: 'Aksi dibatalkan: Tombol acak grup sedang dinonaktifkan demi keamanan. Silakan aktifkan tombol pengaman di atas terlebih dahulu.',
+        type: 'error',
+      });
+      return;
+    }
+
     if (approvedTeams.length < 2) {
       setMessage({
         text: `Kategori ${selectedCat} baru memiliki ${approvedTeams.length} tim berstatus APPROVED. Minimal diperlukan 2 tim untuk pembagian grup.`,
@@ -102,6 +129,14 @@ export const GroupStageDragDropManager: React.FC = () => {
   };
 
   const handleRegenerateMatches = () => {
+    if (isActionsLocked) {
+      setMessage({
+        text: 'Aksi dibatalkan: Tombol perbarui jadwal sedang dinonaktifkan demi keamanan. Silakan aktifkan tombol pengaman di atas terlebih dahulu.',
+        type: 'error',
+      });
+      return;
+    }
+
     setIsProcessing(true);
     setTimeout(() => {
       const res = generateMatchesFromGroups(selectedCat);
@@ -132,6 +167,15 @@ export const GroupStageDragDropManager: React.FC = () => {
   };
 
   const handleConfirmReset = async () => {
+    if (isActionsLocked) {
+      setMessage({
+        text: 'Aksi dibatalkan: Tombol kosongkan grup & jadwal sedang dinonaktifkan demi keamanan. Silakan aktifkan tombol pengaman di atas terlebih dahulu.',
+        type: 'error',
+      });
+      setShowResetModal(false);
+      return;
+    }
+
     setIsResetting(true);
     try {
       const res = await resetCategoryGroupsAndMatches(selectedCat);
@@ -337,6 +381,77 @@ export const GroupStageDragDropManager: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* PENGAMAN TOMBOL AKSI KRITIS (ACAK, PERBARUI JADWAL, KOSONGKAN GRUP) */}
+      <div
+        className={`p-4 rounded-2xl border transition-all duration-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+          isActionsLocked
+            ? 'bg-slate-900/90 border-emerald-500/30 shadow-md'
+            : 'bg-gradient-to-r from-amber-950/40 via-red-950/20 to-slate-900 border-amber-500/50 shadow-lg shadow-amber-950/20'
+        }`}
+      >
+        <div className="flex items-start sm:items-center space-x-3.5">
+          <div
+            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors ${
+              isActionsLocked
+                ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-400'
+                : 'bg-amber-950/80 border-amber-500/60 text-amber-400 animate-pulse'
+            }`}
+          >
+            {isActionsLocked ? (
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            ) : (
+              <ShieldAlert className="w-5 h-5 text-amber-400" />
+            )}
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-bold text-white tracking-wide">
+                Proteksi Tombol Aksi Kritis:
+              </span>
+              <span
+                className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border ${
+                  isActionsLocked
+                    ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                    : 'bg-amber-950 text-amber-300 border-amber-500/50 animate-pulse'
+                }`}
+              >
+                {isActionsLocked ? '🔒 TOMBOL DIMATIKAN (MODE AMAN)' : '⚠️ TOMBOL AKTIF (HATI-HATI)'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+              {isActionsLocked
+                ? 'Tombol Acak, Perbarui Jadwal, dan Kosongkan Grup sedang dimatikan agar jadwal & data aman dari ketidaksengajaan klik saat turnamen berjalan.'
+                : 'Perhatian: Tombol Acak, Perbarui Jadwal, dan Kosongkan Grup saat ini AKTIF. Pastikan tidak menimpa jadwal atau data pertandingan yang sedang berjalan!'}
+            </p>
+          </div>
+        </div>
+
+        {/* Toggle Button */}
+        <div className="flex items-center space-x-3 self-end sm:self-auto shrink-0">
+          <button
+            type="button"
+            onClick={handleToggleLock}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center space-x-2 cursor-pointer shadow-sm ${
+              isActionsLocked
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow-amber-500/20'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20'
+            }`}
+          >
+            {isActionsLocked ? (
+              <>
+                <Unlock className="w-4 h-4" />
+                <span>AKTIFKAN TOMBOL</span>
+              </>
+            ) : (
+              <>
+                <Lock className="w-4 h-4" />
+                <span>MATIKAN TOMBOL (KUNCI AMAN)</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* ACTION TOOLBAR: RANDOMIZE & CONTROLS */}
       <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -354,24 +469,59 @@ export const GroupStageDragDropManager: React.FC = () => {
 
           {/* Randomize Button */}
           <button
+            type="button"
             onClick={handleRandomize}
-            disabled={isProcessing || approvedTeams.length < 2}
-            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-red-600 hover:from-amber-400 hover:to-red-500 text-slate-950 font-black text-xs uppercase tracking-wider transition shadow-lg shadow-amber-500/20 flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+            disabled={isActionsLocked || isProcessing || approvedTeams.length < 2}
+            className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition flex items-center space-x-2 ${
+              isActionsLocked
+                ? 'bg-slate-800/80 text-slate-500 border border-slate-700/60 cursor-not-allowed opacity-60'
+                : 'bg-gradient-to-r from-amber-500 to-red-600 hover:from-amber-400 hover:to-red-500 text-slate-950 font-black shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50'
+            }`}
+            title={
+              isActionsLocked
+                ? 'Tombol Acak sedang DIMATIKAN demi keamanan. Aktifkan tombol pengaman di atas jika ingin mengacak grup.'
+                : `Acak sistem fase grup (${teamsPerGroup} Tim/Grup)`
+            }
           >
-            <Shuffle className={`w-4 h-4 ${isProcessing ? 'animate-spin' : ''}`} />
-            <span>🎲 Acak Sistem Fase Grup ({teamsPerGroup} Tim/Grup)</span>
+            {isActionsLocked ? (
+              <Lock className="w-4 h-4 text-slate-500" />
+            ) : (
+              <Shuffle className={`w-4 h-4 ${isProcessing ? 'animate-spin' : ''}`} />
+            )}
+            <span>
+              {isActionsLocked
+                ? '🔒 Acak Grup (Dimatikan)'
+                : `🎲 Acak Sistem Fase Grup (${teamsPerGroup} Tim/Grup)`}
+            </span>
           </button>
 
           {/* Regenerate Matches from current group formation */}
           {currentCategoryGroups.length > 0 && (
             <button
+              type="button"
               onClick={handleRegenerateMatches}
-              disabled={isProcessing}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold border border-slate-700 transition flex items-center space-x-2 cursor-pointer"
-              title="Perbarui Jadwal Pertandingan & Bagan Knockout berdasarkan susunan grup terkini"
+              disabled={isActionsLocked || isProcessing}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition flex items-center space-x-2 ${
+                isActionsLocked
+                  ? 'bg-slate-800/80 text-slate-500 border-slate-700/60 cursor-not-allowed opacity-60'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border-slate-700 cursor-pointer'
+              }`}
+              title={
+                isActionsLocked
+                  ? 'Tombol Perbarui Jadwal sedang DIMATIKAN demi keamanan. Aktifkan tombol pengaman di atas jika ingin memperbarui jadwal.'
+                  : 'Perbarui Jadwal Pertandingan & Bagan Knockout berdasarkan susunan grup terkini'
+              }
             >
-              <Calendar className="w-4 h-4 text-emerald-400" />
-              <span>Perbarui Jadwal & Knockout</span>
+              {isActionsLocked ? (
+                <Lock className="w-4 h-4 text-slate-500" />
+              ) : (
+                <Calendar className="w-4 h-4 text-emerald-400" />
+              )}
+              <span>
+                {isActionsLocked
+                  ? '🔒 Perbarui Jadwal (Dimatikan)'
+                  : 'Perbarui Jadwal & Knockout'}
+              </span>
             </button>
           )}
 
@@ -393,13 +543,38 @@ export const GroupStageDragDropManager: React.FC = () => {
           {currentCategoryGroups.length > 0 && (
             <button
               type="button"
-              onClick={() => setShowResetModal(true)}
-              disabled={isProcessing || isResetting}
-              className="px-3.5 py-2.5 rounded-xl bg-red-950/60 hover:bg-red-900 text-red-300 hover:text-white text-xs font-bold border border-red-800/80 transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
-              title={`Kosongkan semua pembagian grup & jadwal untuk kategori ${selectedCat}`}
+              onClick={() => {
+                if (isActionsLocked) {
+                  setMessage({
+                    text: 'Aksi dibatalkan: Tombol kosongkan grup sedang dinonaktifkan demi keamanan. Aktifkan tombol pengaman di atas terlebih dahulu.',
+                    type: 'error',
+                  });
+                  return;
+                }
+                setShowResetModal(true);
+              }}
+              disabled={isActionsLocked || isProcessing || isResetting}
+              className={`px-3.5 py-2.5 rounded-xl text-xs font-bold border transition flex items-center space-x-1.5 shadow-sm ${
+                isActionsLocked
+                  ? 'bg-slate-800/80 text-slate-500 border-slate-700/60 cursor-not-allowed opacity-60'
+                  : 'bg-red-950/60 hover:bg-red-900 text-red-300 hover:text-white border-red-800/80 cursor-pointer disabled:opacity-50'
+              }`}
+              title={
+                isActionsLocked
+                  ? 'Tombol Kosongkan Grup sedang DIMATIKAN demi keamanan. Aktifkan tombol pengaman di atas jika ingin mengosongkan grup.'
+                  : `Kosongkan semua pembagian grup & jadwal untuk kategori ${selectedCat}`
+              }
             >
-              <Trash2 className="w-4 h-4 text-red-400" />
-              <span>Kosongkan Grup & Jadwal</span>
+              {isActionsLocked ? (
+                <Lock className="w-4 h-4 text-slate-500" />
+              ) : (
+                <Trash2 className="w-4 h-4 text-red-400" />
+              )}
+              <span>
+                {isActionsLocked
+                  ? '🔒 Kosongkan Grup (Dimatikan)'
+                  : 'Kosongkan Grup & Jadwal'}
+              </span>
             </button>
           )}
         </div>
@@ -549,12 +724,23 @@ export const GroupStageDragDropManager: React.FC = () => {
                     </button>
                     <button
                       onClick={() => {
+                        if (isActionsLocked) {
+                          setMessage({
+                            text: 'Tombol aksi sedang dimatikan demi keamanan. Aktifkan sakelar pengaman di atas untuk menghapus grup.',
+                            type: 'error',
+                          });
+                          return;
+                        }
                         if (confirm(`Hapus ${grp.groupName}? Seluruh tim di grup ini akan dilepas.`)) {
                           deleteGroup(selectedCat, grp.groupName);
                         }
                       }}
-                      className="p-1 rounded-lg bg-slate-800 hover:bg-red-950 text-slate-400 hover:text-red-400 transition cursor-pointer"
-                      title="Hapus Grup"
+                      className={`p-1 rounded-lg transition ${
+                        isActionsLocked
+                          ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
+                          : 'bg-slate-800 hover:bg-red-950 text-slate-400 hover:text-red-400 cursor-pointer'
+                      }`}
+                      title={isActionsLocked ? 'Hapus grup dinonaktifkan (mode aman)' : 'Hapus Grup'}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -733,7 +919,7 @@ export const GroupStageDragDropManager: React.FC = () => {
       )}
 
       {/* MODAL KONFIRMASI KOSONGKAN GRUP & JADWAL */}
-      {showResetModal && (
+      {showResetModal && !isActionsLocked && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="w-full max-w-md p-6 rounded-2xl bg-slate-900 border border-red-500/30 shadow-2xl space-y-4">
             <div className="flex items-center space-x-3 text-red-500">
@@ -769,7 +955,7 @@ export const GroupStageDragDropManager: React.FC = () => {
               </button>
               <button
                 type="button"
-                disabled={isResetting}
+                disabled={isResetting || isActionsLocked}
                 onClick={handleConfirmReset}
                 className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition flex items-center space-x-2 cursor-pointer shadow-lg shadow-red-600/30 disabled:opacity-50"
               >

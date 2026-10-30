@@ -50,6 +50,7 @@ export const DEFAULT_TOURNAMENT_CONFIG: TournamentConfig = {
   registrationCustomLink: '',
   registrationCustomButtonText: '',
   registrationCustomLinkNewTab: true,
+  lockGroupStageActions: true,
   sectionsVisibility: { ...DEFAULT_SECTIONS_VISIBILITY },
   sectionsBackgrounds: {
     hero: {
