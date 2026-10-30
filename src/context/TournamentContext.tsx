@@ -455,7 +455,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const refreshDataFromServer = useCallback(async () => {
     try {
       setIsSyncingWithServer(true);
-      const isAdminLoggedIn = !!safeLocalStorageGet('wabupcup_current_admin', null);
+      const isAdminLoggedIn = !!safeLocalStorageGet('wabupcup_current_admin', null) || !!safeLocalStorageGet('wabupcup_admin_token', null);
       const [serverConfig, serverCategories, serverRegistrations, serverMatches, serverSponsors, serverAdmins, serverPlayers, serverGroups, health, authCheck] =
         await Promise.all([
           ApiService.getConfig(),
@@ -466,8 +466,8 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           ApiService.getAdmins(isAdminLoggedIn),
           (isAdminLoggedIn ? ApiService.getPlayers() : ApiService.getPlayers(undefined, undefined, false, true)).catch(() => []),
           ApiService.getGroups().catch(() => []),
-          ApiService.checkHealth().catch(() => null),
-          ApiService.getAuthMe().catch(() => null),
+          (isAdminLoggedIn ? ApiService.checkHealth() : Promise.resolve(null)).catch(() => null),
+          (isAdminLoggedIn ? ApiService.getAuthMe() : Promise.resolve(null)).catch(() => null),
         ]);
 
       if (health && health.database) {
@@ -2706,23 +2706,12 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     // Await server persistence so MySQL and server-side state are fully updated
+    // Note: Standings are already calculated locally in React state & table_standings is updated by saveMatch
     try {
       await ApiService.saveMatch(updatedMatch);
     } catch (err) {
       console.warn('Could not sync match live score to server:', err);
     }
-
-    // Refresh standings from backend for full sync (reads persisted table_standings directly)
-    try {
-      const serverStandings = await ApiService.getStandings(updatedMatch.category, 'db');
-      if (serverStandings && Object.keys(serverStandings).length > 0) {
-        setStandings(prev => {
-          const merged = { ...prev, ...serverStandings };
-          safeLocalStorageSet('wabupcup_standings', JSON.stringify(merged));
-          return merged;
-        });
-      }
-    } catch {}
 
     const cat = updatedMatch.category;
     const catGroupMatches = newMatches.filter(m => m.category === cat && !!m.group);

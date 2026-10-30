@@ -342,13 +342,15 @@ async function handleMediaServe(req: Request, res: Response, forceDownload = fal
         }
       }
 
-      // 6a. Default unduhan dan view: redirect 302 ke presigned URL berumur singkat (FOT ~0 bytes)
+      // 6a. Default unduhan dan view: redirect 302 ke presigned URL
+      // Untuk media publik (logo tim, logo sponsor, aset turnamen): expiresIn 7 hari & simpan di Edge CDN Vercel
+      // Untuk dokumen pendaftaran privat (REG_DOC): expiresIn 10 menit & Cache-Control private
       const url = await presignGet(meta.fileKey, {
         contentType: servedType,
         disposition: contentDisposition,
-        expiresIn: 600,
+        expiresIn: isPrivateDoc ? 600 : 604800,
       });
-      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.setHeader('Cache-Control', isPrivateDoc ? 'private, max-age=300' : cacheControl);
       res.setHeader('X-Content-Type-Options', 'nosniff');
       return res.redirect(302, url);
     }

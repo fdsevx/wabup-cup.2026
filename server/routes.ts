@@ -290,7 +290,7 @@ apiRouter.get('/categories', cdnCache(30, 60), async (req: Request, res: Respons
   res.json(categories);
 });
 
-apiRouter.get('/categories/quota', cdnCache(15, 30), async (_req: Request, res: Response) => {
+apiRouter.get('/categories/quota', cdnCache(30, 60), async (_req: Request, res: Response) => {
   try {
     const quotas = await Database.getCategoryQuotas();
     res.json(quotas);
@@ -379,7 +379,7 @@ apiRouter.delete('/categories/:id', requireAdmin, async (req: Request, res: Resp
 });
 
 // 7. Registrations
-apiRouter.get('/registrations/public', cdnCache(20, 40), async (req: Request, res: Response) => {
+apiRouter.get('/registrations/public', cdnCache(60, 180), async (req: Request, res: Response) => {
   try {
     const publicData = await Database.getPublicRegistrations();
     res.json(publicData);
@@ -1133,10 +1133,10 @@ apiRouter.delete('/players/:id', requireAdmin, async (req: Request, res: Respons
   }
 });
 
-apiRouter.get('/players/top-scorers', cdnCache(15, 30), async (req: Request, res: Response) => {
+apiRouter.get('/players/top-scorers', cdnCache(60, 120), async (req: Request, res: Response) => {
   try {
     const { category } = req.query;
-    const players = await Database.getPlayers(category as string | undefined);
+    const players = await Database.getPlayers(category as string | undefined, undefined, false, true);
     const topScorers = [...players]
       .filter(p => p.goals > 0)
       .sort((a, b) => b.goals - a.goals || a.yellowCards - b.yellowCards);
@@ -1147,7 +1147,7 @@ apiRouter.get('/players/top-scorers', cdnCache(15, 30), async (req: Request, res
 });
 
 // 12. Groups & Group Stages
-apiRouter.get('/groups', cdnCache(15, 30), async (req: Request, res: Response) => {
+apiRouter.get('/groups', cdnCache(60, 180), async (req: Request, res: Response) => {
   try {
     const { category } = req.query;
     const groups = await Database.getGroupStages(category as string | undefined);

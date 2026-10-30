@@ -99,6 +99,11 @@ let categoryQuotasCache: { data: Array<{ id: string; maxTeams: number; registere
 let matchesCache: { data: MatchItem[]; timestamp: number } | null = null;
 let playersCache: Map<string, { data: PlayerItem[]; timestamp: number }> = new Map();
 let standingsDbCache: Map<string, { data: Record<string, TeamStandingItem[]>; timestamp: number }> = new Map();
+let publicRegistrationsCache: { data: any[]; timestamp: number } | null = null;
+let configCache: { data: TournamentConfig; timestamp: number } | null = null;
+let sponsorsCache: { data: SponsorItem[]; timestamp: number } | null = null;
+let groupsCache: Map<string, { data: GroupStageItem[]; timestamp: number }> = new Map();
+let mediaMetaCache: Map<string, { data: Omit<AppMediaItem, 'fileData'> | null; timestamp: number }> = new Map();
 
 export function invalidateCategoriesCache() {
   categoriesCache = null;
@@ -115,6 +120,30 @@ export function invalidatePlayersCache() {
 
 export function invalidateStandingsCache() {
   standingsDbCache.clear();
+}
+
+export function invalidatePublicRegistrationsCache() {
+  publicRegistrationsCache = null;
+}
+
+export function invalidateConfigCache() {
+  configCache = null;
+}
+
+export function invalidateSponsorsCache() {
+  sponsorsCache = null;
+}
+
+export function invalidateGroupsCache() {
+  groupsCache.clear();
+}
+
+export function invalidateMediaMetaCache(id?: string) {
+  if (id) {
+    mediaMetaCache.delete(id);
+  } else {
+    mediaMetaCache.clear();
+  }
 }
 
 export function loadLocalStore(): void {}
@@ -560,14 +589,24 @@ function sanitizeAdminUser(admin: any): AdminUser {
 
 export const Database = {
   // Config
-  async getConfig(): Promise<TournamentConfig> {
+  async getConfig(forceRefresh = false): Promise<TournamentConfig> {
+    if (!forceRefresh && configCache && Date.now() - configCache.timestamp < 120000) {
+      return configCache.data;
+    }
     await ensureDbConnected();
+    let result: TournamentConfig = {
+      ...memStore.config,
+      sectionsVisibility: {
+        ...DEFAULT_SECTIONS_VISIBILITY,
+        ...(memStore.config.sectionsVisibility || {}),
+      },
+    };
     if (pool && isMySqlConnected) {
       try {
         const [rows]: any = await pool.query('SELECT config_value FROM tournament_config WHERE config_key = ?', ['main_config']);
         if (rows.length > 0) {
           const parsed = JSON.parse(rows[0].config_value);
-          return {
+          result = {
             ...DEFAULT_TOURNAMENT_CONFIG,
             ...parsed,
             sectionsVisibility: {
@@ -580,16 +619,12 @@ export const Database = {
         console.error('Error fetching config from MySQL:', err);
       }
     }
-    return {
-      ...memStore.config,
-      sectionsVisibility: {
-        ...DEFAULT_SECTIONS_VISIBILITY,
-        ...(memStore.config.sectionsVisibility || {}),
-      },
-    };
+    configCache = { data: result, timestamp: Date.now() };
+    return result;
   },
 
   async updateConfig(newConfig: Partial<TournamentConfig>): Promise<TournamentConfig> {
+    invalidateConfigCache();
     await ensureDbConnected();
     const current = await this.getConfig();
     const updated: TournamentConfig = {
@@ -1017,15 +1052,19 @@ export const Database = {
     }));
   },
 
-  async getPublicRegistrations(): Promise<any[]> {
+  async getPublicRegistrations(forceRefresh = false): Promise<any[]> {
+    if (!forceRefresh && publicRegistrationsCache && Date.now() - publicRegistrationsCache.timestamp < 60000) {
+      return publicRegistrationsCache.data;
+    }
     await ensureDbConnected();
+    let result: any[] = [];
     if (pool && isMySqlConnected) {
       try {
         const [rows]: any = await pool.query(
           'SELECT id, reg_code, category_id, team_name, team_logo, institution_name, status FROM registrations ORDER BY created_at DESC'
         );
         if (Array.isArray(rows)) {
-          return rows.map((r: any) => ({
+          result = rows.map((r: any) => ({
             id: r.id,
             regCode: r.reg_code,
             category: r.category_id,
@@ -1038,16 +1077,19 @@ export const Database = {
       } catch (err) {
         console.error('Error fetching public registrations from MySQL:', err);
       }
+    } else {
+      result = memStore.registrations.map(r => ({
+        id: r.id,
+        regCode: r.regCode,
+        category: r.category,
+        teamName: r.teamName,
+        teamLogo: r.teamLogo || null,
+        institutionName: r.institutionName,
+        status: r.status,
+      }));
     }
-    return memStore.registrations.map(r => ({
-      id: r.id,
-      regCode: r.regCode,
-      category: r.category,
-      teamName: r.teamName,
-      teamLogo: r.teamLogo || null,
-      institutionName: r.institutionName,
-      status: r.status,
-    }));
+    publicRegistrationsCache = { data: result, timestamp: Date.now() };
+    return result;
   },
 
   async getRegistrationById(id: string): Promise<RegistrationItem | null> {
@@ -1120,6 +1162,7 @@ export const Database = {
   },
 
   async saveRegistration(item: RegistrationItem): Promise<RegistrationItem> {
+    invalidatePublicRegistrationsCache();
     await ensureDbConnected();
 
     // Normalize teamLogo if it contains full domain or raw media ID
@@ -1328,6 +1371,7 @@ export const Database = {
   },
 
   async deleteRegistration(id: string): Promise<boolean> {
+    invalidatePublicRegistrationsCache();
     await ensureDbConnected();
 
     // 1. Locate registration before deletion to extract all linked media IDs
@@ -1564,11 +1608,13 @@ export const Database = {
       console.warn('Error recalculating standings on saveMatch:', err);
     }
 
-    // Automatically synchronize player stats (goals & cards) from match events
-    try {
-      await this.syncPlayerStatsFromMatches(match.category);
-    } catch (err) {
-      console.warn('Error syncing player stats on saveMatch:', err);
+    // Automatically synchronize player stats (goals & cards) only if match has events
+    if (match.events && Array.isArray(match.events) && match.events.length > 0) {
+      try {
+        await this.syncPlayerStatsFromMatches(match.category);
+      } catch (err) {
+        console.warn('Error syncing player stats on saveMatch:', err);
+      }
     }
 
     return match;
@@ -1677,13 +1723,17 @@ export const Database = {
   },
 
   // Sponsors
-  async getSponsors(): Promise<SponsorItem[]> {
+  async getSponsors(forceRefresh = false): Promise<SponsorItem[]> {
+    if (!forceRefresh && sponsorsCache && Date.now() - sponsorsCache.timestamp < 300000) {
+      return sponsorsCache.data;
+    }
     await ensureDbConnected();
+    let result: SponsorItem[] = [...memStore.sponsors];
     if (pool && isMySqlConnected) {
       try {
         const [rows]: any = await pool.query('SELECT * FROM sponsors WHERE is_active = TRUE ORDER BY sort_order ASC');
         if (Array.isArray(rows)) {
-          return rows.map((r: any) => ({
+          result = rows.map((r: any) => ({
             id: r.id,
             name: r.name,
             tier: r.tier,
@@ -1697,10 +1747,12 @@ export const Database = {
         console.error('Error fetching sponsors from MySQL:', err);
       }
     }
-    return memStore.sponsors;
+    sponsorsCache = { data: result, timestamp: Date.now() };
+    return result;
   },
 
   async saveSponsor(sponsor: SponsorItem): Promise<SponsorItem> {
+    invalidateSponsorsCache();
     await ensureDbConnected();
     const idx = memStore.sponsors.findIndex(s => s.id === sponsor.id);
     if (idx >= 0) {
@@ -1729,6 +1781,7 @@ export const Database = {
   },
 
   async deleteSponsor(id: string): Promise<boolean> {
+    invalidateSponsorsCache();
     await ensureDbConnected();
     memStore.sponsors = memStore.sponsors.filter(s => s.id !== id);
     persistLocalStore();
@@ -2180,8 +2233,15 @@ export const Database = {
    * Metadata saja (TANPA file_data). Dipakai untuk cek ETag/304 dan redirect B2
    * supaya isi file tidak ikut dibaca dari TiDB.
    */
-  async getMediaMeta(id: string): Promise<Omit<AppMediaItem, 'fileData'> | null> {
+  async getMediaMeta(id: string, forceRefresh = false): Promise<Omit<AppMediaItem, 'fileData'> | null> {
+    if (!forceRefresh && mediaMetaCache.has(id)) {
+      const cached = mediaMetaCache.get(id)!;
+      if (Date.now() - cached.timestamp < 600000) { // 10 minutes in-memory cache
+        return cached.data;
+      }
+    }
     await ensureDbConnected();
+    let meta: Omit<AppMediaItem, 'fileData'> | null = null;
     if (pool && isMySqlConnected) {
       try {
         const [rows]: any = await pool.execute(
@@ -2190,7 +2250,7 @@ export const Database = {
         );
         if (Array.isArray(rows) && rows.length > 0) {
           const r = rows[0];
-          return {
+          meta = {
             id: r.id,
             category: r.category,
             refId: r.ref_id || undefined,
@@ -2206,13 +2266,19 @@ export const Database = {
         console.error('Error fetching media meta from TiDB app_media_storage:', err);
       }
     }
-    const mem = memStore.media.get(id);
-    if (!mem) return null;
-    const { fileData: _omit, ...meta } = mem;
+    if (!meta) {
+      const mem = memStore.media.get(id);
+      if (mem) {
+        const { fileData: _omit, ...m } = mem;
+        meta = m;
+      }
+    }
+    mediaMetaCache.set(id, { data: meta, timestamp: Date.now() });
     return meta;
   },
 
   async deleteMedia(id: string): Promise<boolean> {
+    invalidateMediaMetaCache(id);
     await ensureDbConnected();
     memStore.media.delete(id);
     if (pool && isMySqlConnected) {
@@ -2227,6 +2293,7 @@ export const Database = {
   },
 
   async deleteMediaByRef(refId: string, category?: string): Promise<boolean> {
+    invalidateMediaMetaCache();
     await ensureDbConnected();
     for (const [mId, mItem] of memStore.media.entries()) {
       if (mItem.refId === refId && (!category || mItem.category === category)) {
@@ -2251,6 +2318,7 @@ export const Database = {
   },
 
   async updateMediaRef(id: string, refId: string, subKey?: string): Promise<boolean> {
+    invalidateMediaMetaCache(id);
     await ensureDbConnected();
     const memItem = memStore.media.get(id);
     if (memItem) {
@@ -2491,8 +2559,16 @@ export const Database = {
   },
 
   // 13. Groups (tournament_groups)
-  async getGroupStages(category?: string): Promise<GroupStageItem[]> {
+  async getGroupStages(category?: string, forceRefresh = false): Promise<GroupStageItem[]> {
+    const cacheKey = category || '__ALL__';
+    if (!forceRefresh && groupsCache.has(cacheKey)) {
+      const cached = groupsCache.get(cacheKey)!;
+      if (Date.now() - cached.timestamp < 60000) {
+        return cached.data;
+      }
+    }
     await ensureDbConnected();
+    let list: GroupStageItem[] = [];
     if (pool && isMySqlConnected) {
       try {
         let query = 'SELECT * FROM tournament_groups WHERE 1=1';
@@ -2504,7 +2580,7 @@ export const Database = {
         query += ' ORDER BY group_name ASC';
         const [rows]: any = await pool.query(query, params);
         if (Array.isArray(rows)) {
-          return rows.map((r: any) => ({
+          list = rows.map((r: any) => ({
             id: r.id,
             category: r.category_id,
             groupName: r.group_name,
@@ -2514,13 +2590,16 @@ export const Database = {
       } catch (err) {
         console.error('Error fetching group stages from MySQL:', err);
       }
+    } else {
+      list = [...memStore.groups];
+      if (category) list = list.filter(g => g.category === category);
     }
-    let list = [...memStore.groups];
-    if (category) list = list.filter(g => g.category === category);
+    groupsCache.set(cacheKey, { data: list, timestamp: Date.now() });
     return list;
   },
 
   async saveGroupStages(category: string, groups: GroupStageItem[]): Promise<GroupStageItem[]> {
+    invalidateGroupsCache();
     await ensureDbConnected();
     memStore.groups = memStore.groups.filter(g => g.category !== category).concat(groups);
     persistLocalStore();
@@ -2551,6 +2630,7 @@ export const Database = {
   },
 
   async resetCategoryGroupsAndMatches(category: string): Promise<{ success: boolean; message: string }> {
+    invalidateGroupsCache();
     await ensureDbConnected();
     memStore.groups = memStore.groups.filter(g => g.category !== category);
     memStore.matches = memStore.matches.filter(m => m.category !== category);

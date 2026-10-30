@@ -340,6 +340,11 @@ var categoryQuotasCache = null;
 var matchesCache = null;
 var playersCache = /* @__PURE__ */ new Map();
 var standingsDbCache = /* @__PURE__ */ new Map();
+var publicRegistrationsCache = null;
+var configCache = null;
+var sponsorsCache = null;
+var groupsCache = /* @__PURE__ */ new Map();
+var mediaMetaCache = /* @__PURE__ */ new Map();
 function invalidateMatchesCache() {
   matchesCache = null;
 }
@@ -348,6 +353,25 @@ function invalidatePlayersCache() {
 }
 function invalidateStandingsCache() {
   standingsDbCache.clear();
+}
+function invalidatePublicRegistrationsCache() {
+  publicRegistrationsCache = null;
+}
+function invalidateConfigCache() {
+  configCache = null;
+}
+function invalidateSponsorsCache() {
+  sponsorsCache = null;
+}
+function invalidateGroupsCache() {
+  groupsCache.clear();
+}
+function invalidateMediaMetaCache(id) {
+  if (id) {
+    mediaMetaCache.delete(id);
+  } else {
+    mediaMetaCache.clear();
+  }
 }
 function persistLocalStore() {
 }
@@ -736,14 +760,24 @@ function sanitizeAdminUser(admin) {
 }
 var Database = {
   // Config
-  async getConfig() {
+  async getConfig(forceRefresh = false) {
+    if (!forceRefresh && configCache && Date.now() - configCache.timestamp < 12e4) {
+      return configCache.data;
+    }
     await ensureDbConnected();
+    let result = {
+      ...memStore.config,
+      sectionsVisibility: {
+        ...DEFAULT_SECTIONS_VISIBILITY,
+        ...memStore.config.sectionsVisibility || {}
+      }
+    };
     if (pool && isMySqlConnected) {
       try {
         const [rows] = await pool.query("SELECT config_value FROM tournament_config WHERE config_key = ?", ["main_config"]);
         if (rows.length > 0) {
           const parsed = JSON.parse(rows[0].config_value);
-          return {
+          result = {
             ...DEFAULT_TOURNAMENT_CONFIG,
             ...parsed,
             sectionsVisibility: {
@@ -756,15 +790,11 @@ var Database = {
         console.error("Error fetching config from MySQL:", err);
       }
     }
-    return {
-      ...memStore.config,
-      sectionsVisibility: {
-        ...DEFAULT_SECTIONS_VISIBILITY,
-        ...memStore.config.sectionsVisibility || {}
-      }
-    };
+    configCache = { data: result, timestamp: Date.now() };
+    return result;
   },
   async updateConfig(newConfig) {
+    invalidateConfigCache();
     await ensureDbConnected();
     const current = await this.getConfig();
     const updated = {
@@ -1172,15 +1202,19 @@ var Database = {
       documents: sanitizeRegistrationDocuments(r.documents, r.id)
     }));
   },
-  async getPublicRegistrations() {
+  async getPublicRegistrations(forceRefresh = false) {
+    if (!forceRefresh && publicRegistrationsCache && Date.now() - publicRegistrationsCache.timestamp < 6e4) {
+      return publicRegistrationsCache.data;
+    }
     await ensureDbConnected();
+    let result = [];
     if (pool && isMySqlConnected) {
       try {
         const [rows] = await pool.query(
           "SELECT id, reg_code, category_id, team_name, team_logo, institution_name, status FROM registrations ORDER BY created_at DESC"
         );
         if (Array.isArray(rows)) {
-          return rows.map((r) => ({
+          result = rows.map((r) => ({
             id: r.id,
             regCode: r.reg_code,
             category: r.category_id,
@@ -1193,16 +1227,19 @@ var Database = {
       } catch (err) {
         console.error("Error fetching public registrations from MySQL:", err);
       }
+    } else {
+      result = memStore.registrations.map((r) => ({
+        id: r.id,
+        regCode: r.regCode,
+        category: r.category,
+        teamName: r.teamName,
+        teamLogo: r.teamLogo || null,
+        institutionName: r.institutionName,
+        status: r.status
+      }));
     }
-    return memStore.registrations.map((r) => ({
-      id: r.id,
-      regCode: r.regCode,
-      category: r.category,
-      teamName: r.teamName,
-      teamLogo: r.teamLogo || null,
-      institutionName: r.institutionName,
-      status: r.status
-    }));
+    publicRegistrationsCache = { data: result, timestamp: Date.now() };
+    return result;
   },
   async getRegistrationById(id) {
     await ensureDbConnected();
@@ -1272,6 +1309,7 @@ var Database = {
     return null;
   },
   async saveRegistration(item) {
+    invalidatePublicRegistrationsCache();
     await ensureDbConnected();
     if (item.teamLogo) {
       const trimmedLogo = item.teamLogo.trim();
@@ -1493,6 +1531,7 @@ var Database = {
     return item;
   },
   async deleteRegistration(id) {
+    invalidatePublicRegistrationsCache();
     await ensureDbConnected();
     let localReg = memStore.registrations.find((r) => r.id === id || r.regCode === id);
     let mySqlRow = null;
@@ -1743,10 +1782,12 @@ var Database = {
     } catch (err) {
       console.warn("Error recalculating standings on saveMatch:", err);
     }
-    try {
-      await this.syncPlayerStatsFromMatches(match.category);
-    } catch (err) {
-      console.warn("Error syncing player stats on saveMatch:", err);
+    if (match.events && Array.isArray(match.events) && match.events.length > 0) {
+      try {
+        await this.syncPlayerStatsFromMatches(match.category);
+      } catch (err) {
+        console.warn("Error syncing player stats on saveMatch:", err);
+      }
     }
     return match;
   },
@@ -1911,13 +1952,17 @@ var Database = {
     return matchesToSave;
   },
   // Sponsors
-  async getSponsors() {
+  async getSponsors(forceRefresh = false) {
+    if (!forceRefresh && sponsorsCache && Date.now() - sponsorsCache.timestamp < 3e5) {
+      return sponsorsCache.data;
+    }
     await ensureDbConnected();
+    let result = [...memStore.sponsors];
     if (pool && isMySqlConnected) {
       try {
         const [rows] = await pool.query("SELECT * FROM sponsors WHERE is_active = TRUE ORDER BY sort_order ASC");
         if (Array.isArray(rows)) {
-          return rows.map((r) => ({
+          result = rows.map((r) => ({
             id: r.id,
             name: r.name,
             tier: r.tier,
@@ -1931,9 +1976,11 @@ var Database = {
         console.error("Error fetching sponsors from MySQL:", err);
       }
     }
-    return memStore.sponsors;
+    sponsorsCache = { data: result, timestamp: Date.now() };
+    return result;
   },
   async saveSponsor(sponsor) {
+    invalidateSponsorsCache();
     await ensureDbConnected();
     const idx = memStore.sponsors.findIndex((s) => s.id === sponsor.id);
     if (idx >= 0) {
@@ -1971,6 +2018,7 @@ var Database = {
     return sponsor;
   },
   async deleteSponsor(id) {
+    invalidateSponsorsCache();
     await ensureDbConnected();
     memStore.sponsors = memStore.sponsors.filter((s) => s.id !== id);
     persistLocalStore();
@@ -2438,8 +2486,15 @@ var Database = {
    * Metadata saja (TANPA file_data). Dipakai untuk cek ETag/304 dan redirect B2
    * supaya isi file tidak ikut dibaca dari TiDB.
    */
-  async getMediaMeta(id) {
+  async getMediaMeta(id, forceRefresh = false) {
+    if (!forceRefresh && mediaMetaCache.has(id)) {
+      const cached = mediaMetaCache.get(id);
+      if (Date.now() - cached.timestamp < 6e5) {
+        return cached.data;
+      }
+    }
     await ensureDbConnected();
+    let meta = null;
     if (pool && isMySqlConnected) {
       try {
         const [rows] = await pool.execute(
@@ -2448,7 +2503,7 @@ var Database = {
         );
         if (Array.isArray(rows) && rows.length > 0) {
           const r = rows[0];
-          return {
+          meta = {
             id: r.id,
             category: r.category,
             refId: r.ref_id || void 0,
@@ -2464,12 +2519,18 @@ var Database = {
         console.error("Error fetching media meta from TiDB app_media_storage:", err);
       }
     }
-    const mem = memStore.media.get(id);
-    if (!mem) return null;
-    const { fileData: _omit, ...meta } = mem;
+    if (!meta) {
+      const mem = memStore.media.get(id);
+      if (mem) {
+        const { fileData: _omit, ...m } = mem;
+        meta = m;
+      }
+    }
+    mediaMetaCache.set(id, { data: meta, timestamp: Date.now() });
     return meta;
   },
   async deleteMedia(id) {
+    invalidateMediaMetaCache(id);
     await ensureDbConnected();
     memStore.media.delete(id);
     if (pool && isMySqlConnected) {
@@ -2483,6 +2544,7 @@ var Database = {
     return true;
   },
   async deleteMediaByRef(refId, category) {
+    invalidateMediaMetaCache();
     await ensureDbConnected();
     for (const [mId, mItem] of memStore.media.entries()) {
       if (mItem.refId === refId && (!category || mItem.category === category)) {
@@ -2505,6 +2567,7 @@ var Database = {
     return true;
   },
   async updateMediaRef(id, refId, subKey) {
+    invalidateMediaMetaCache(id);
     await ensureDbConnected();
     const memItem = memStore.media.get(id);
     if (memItem) {
@@ -2784,8 +2847,16 @@ var Database = {
     return true;
   },
   // 13. Groups (tournament_groups)
-  async getGroupStages(category) {
+  async getGroupStages(category, forceRefresh = false) {
+    const cacheKey = category || "__ALL__";
+    if (!forceRefresh && groupsCache.has(cacheKey)) {
+      const cached = groupsCache.get(cacheKey);
+      if (Date.now() - cached.timestamp < 6e4) {
+        return cached.data;
+      }
+    }
     await ensureDbConnected();
+    let list = [];
     if (pool && isMySqlConnected) {
       try {
         let query = "SELECT * FROM tournament_groups WHERE 1=1";
@@ -2797,7 +2868,7 @@ var Database = {
         query += " ORDER BY group_name ASC";
         const [rows] = await pool.query(query, params);
         if (Array.isArray(rows)) {
-          return rows.map((r) => ({
+          list = rows.map((r) => ({
             id: r.id,
             category: r.category_id,
             groupName: r.group_name,
@@ -2807,12 +2878,15 @@ var Database = {
       } catch (err) {
         console.error("Error fetching group stages from MySQL:", err);
       }
+    } else {
+      list = [...memStore.groups];
+      if (category) list = list.filter((g) => g.category === category);
     }
-    let list = [...memStore.groups];
-    if (category) list = list.filter((g) => g.category === category);
+    groupsCache.set(cacheKey, { data: list, timestamp: Date.now() });
     return list;
   },
   async saveGroupStages(category, groups) {
+    invalidateGroupsCache();
     await ensureDbConnected();
     memStore.groups = memStore.groups.filter((g) => g.category !== category).concat(groups);
     persistLocalStore();
@@ -2838,6 +2912,7 @@ var Database = {
     return groups;
   },
   async resetCategoryGroupsAndMatches(category) {
+    invalidateGroupsCache();
     await ensureDbConnected();
     memStore.groups = memStore.groups.filter((g) => g.category !== category);
     memStore.matches = memStore.matches.filter((m) => m.category !== category);
@@ -3802,9 +3877,9 @@ async function handleMediaServe(req, res, forceDownload = false) {
       const url = await presignGet(meta.fileKey, {
         contentType: servedType,
         disposition: contentDisposition,
-        expiresIn: 600
+        expiresIn: isPrivateDoc ? 600 : 604800
       });
-      res.setHeader("Cache-Control", "private, max-age=300");
+      res.setHeader("Cache-Control", isPrivateDoc ? "private, max-age=300" : cacheControl);
       res.setHeader("X-Content-Type-Options", "nosniff");
       return res.redirect(302, url);
     }
@@ -4378,7 +4453,7 @@ apiRouter.get("/categories", cdnCache(30, 60), async (req, res) => {
   const categories = await Database.getCategories();
   res.json(categories);
 });
-apiRouter.get("/categories/quota", cdnCache(15, 30), async (_req, res) => {
+apiRouter.get("/categories/quota", cdnCache(30, 60), async (_req, res) => {
   try {
     const quotas = await Database.getCategoryQuotas();
     res.json(quotas);
@@ -4454,7 +4529,7 @@ apiRouter.delete("/categories/:id", requireAdmin, async (req, res) => {
     res.status(500).json({ error: err?.message });
   }
 });
-apiRouter.get("/registrations/public", cdnCache(20, 40), async (req, res) => {
+apiRouter.get("/registrations/public", cdnCache(60, 180), async (req, res) => {
   try {
     const publicData = await Database.getPublicRegistrations();
     res.json(publicData);
@@ -5118,17 +5193,17 @@ apiRouter.delete("/players/:id", requireAdmin, async (req, res) => {
     res.status(500).json({ error: err?.message || "Gagal menghapus pemain" });
   }
 });
-apiRouter.get("/players/top-scorers", cdnCache(15, 30), async (req, res) => {
+apiRouter.get("/players/top-scorers", cdnCache(60, 120), async (req, res) => {
   try {
     const { category } = req.query;
-    const players = await Database.getPlayers(category);
+    const players = await Database.getPlayers(category, void 0, false, true);
     const topScorers = [...players].filter((p) => p.goals > 0).sort((a, b) => b.goals - a.goals || a.yellowCards - b.yellowCards);
     res.json(topScorers);
   } catch (err) {
     res.status(500).json({ error: err?.message });
   }
 });
-apiRouter.get("/groups", cdnCache(15, 30), async (req, res) => {
+apiRouter.get("/groups", cdnCache(60, 180), async (req, res) => {
   try {
     const { category } = req.query;
     const groups = await Database.getGroupStages(category);
