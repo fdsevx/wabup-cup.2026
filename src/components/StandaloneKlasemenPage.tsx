@@ -47,7 +47,6 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
     standings,
     players,
     registrations,
-    refreshDataFromServer,
     refreshStandings,
     refreshPlayers,
     refreshMatches,

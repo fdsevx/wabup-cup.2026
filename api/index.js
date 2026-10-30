@@ -1807,7 +1807,9 @@ var Database = {
     }
     try {
       await this.calculateStandings(cat);
-      await this.syncPlayerStatsFromMatches(cat);
+      if (targetMatch?.events && Array.isArray(targetMatch.events) && targetMatch.events.length > 0) {
+        await this.syncPlayerStatsFromMatches(cat);
+      }
     } catch (err) {
       console.warn("Error updating standings/stats on deleteMatch:", err);
     }
@@ -1860,7 +1862,10 @@ var Database = {
     }
     try {
       await this.calculateStandings(category);
-      await this.syncPlayerStatsFromMatches(category);
+      const hasEvents = newMatches.some((m) => Array.isArray(m.events) && m.events.length > 0);
+      if (hasEvents) {
+        await this.syncPlayerStatsFromMatches(category);
+      }
     } catch (err) {
       console.warn("Error updating standings/stats on replaceCategoryMatches:", err);
     }
@@ -1941,10 +1946,18 @@ var Database = {
         }
       }
     }
+    const categoriesWithEvents = /* @__PURE__ */ new Set();
+    for (const match of matchesToSave) {
+      if (Array.isArray(match.events) && match.events.length > 0) {
+        categoriesWithEvents.add(match.category);
+      }
+    }
     for (const cat of categoriesAffected) {
       try {
         await this.calculateStandings(cat);
-        await this.syncPlayerStatsFromMatches(cat);
+        if (categoriesWithEvents.has(cat)) {
+          await this.syncPlayerStatsFromMatches(cat);
+        }
       } catch (err) {
         console.warn("Error updating standings/stats on saveMatchesBatch:", err);
       }
@@ -4267,10 +4280,6 @@ function sanitizeAdmin(user) {
   const { password, password_hash, ...safe } = user;
   return safe;
 }
-var cachePublic = (req, res, next) => {
-  res.setHeader("Cache-Control", "public, s-maxage=300");
-  next();
-};
 var cdnCache = (sMaxAge = 10, swr = 30) => (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -4917,7 +4926,7 @@ function validateSponsorUrl(rawUrl) {
   }
   return { valid: true, normalized: trimmed };
 }
-apiRouter.get("/sponsors", cachePublic, async (req, res) => {
+apiRouter.get("/sponsors", cdnCache(300, 600), async (req, res) => {
   const list = await Database.getSponsors();
   res.json(list);
 });

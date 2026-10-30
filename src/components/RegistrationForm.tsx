@@ -45,7 +45,7 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
   onClose,
   preselectedCategory = 'SMA',
 }) => {
-  const { config, categories, registrations, submitNewRegistration, getWhatsAppNotificationUrl, committeeContacts, refreshCategoryQuotas, refreshDataFromServer } = useTournament();
+  const { config, categories, registrations, submitNewRegistration, getWhatsAppNotificationUrl, committeeContacts, refreshCategoryQuotas, refreshConfig } = useTournament();
   const regStatus = getRegistrationStatus(config);
 
   // Helper to calculate real-time registered count for a category
@@ -290,7 +290,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       .catch((err) => {
         if (err?.code === 'REGISTRATION_CLOSED' || err?.status === 403) {
           setIsClosedForced(true);
-          refreshDataFromServer().catch(() => {});
+          refreshConfig?.();
+          refreshCategoryQuotas(true).catch(() => {});
           return;
         }
         console.error('Upload to blob failed, falling back to local reader:', err);
@@ -340,7 +341,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       .catch((err) => {
         if (err?.code === 'REGISTRATION_CLOSED' || err?.status === 403) {
           setIsClosedForced(true);
-          refreshDataFromServer().catch(() => {});
+          refreshConfig?.();
+          refreshCategoryQuotas(true).catch(() => {});
           return;
         }
         // Fallback to local canvas compression if direct upload is unavailable
@@ -510,7 +512,8 @@ export const RegistrationForm: React.FC<RegistrationFormProps> = ({
       console.error('Registration submission error:', err);
       if (err?.code === 'REGISTRATION_CLOSED' || err?.status === 403) {
         setIsClosedForced(true);
-        refreshDataFromServer().catch(() => {});
+        refreshConfig?.();
+        refreshCategoryQuotas(true).catch(() => {});
         return;
       }
       const errMsg = err?.message || '';

@@ -237,6 +237,7 @@ interface TournamentContextType {
   toggleTheme: () => void;
   config: TournamentConfig;
   updateConfig: (newConfig: Partial<TournamentConfig>) => void;
+  refreshConfig: () => Promise<void>;
   refreshDataFromServer: () => Promise<void>;
   isSyncingWithServer: boolean;
   isInitialLoading: boolean;
@@ -566,32 +567,50 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   }, []);
 
+  const refreshConfig = useCallback(async () => {
+    try {
+      const serverConfig = await ApiService.getConfig();
+      if (serverConfig) {
+        setConfig(prev => {
+          const merged: TournamentConfig = {
+            ...prev,
+            ...serverConfig,
+            sectionsVisibility: {
+              ...DEFAULT_SECTIONS_VISIBILITY,
+              ...(serverConfig.sectionsVisibility || prev.sectionsVisibility || {}),
+            },
+            sectionsBackgrounds: {
+              ...(prev.sectionsBackgrounds || {}),
+              ...(serverConfig.sectionsBackgrounds || {}),
+            },
+            downloadableDocs:
+              serverConfig.downloadableDocs !== undefined && Array.isArray(serverConfig.downloadableDocs)
+                ? serverConfig.downloadableDocs
+                : (prev.downloadableDocs || []),
+            committeeContacts:
+              serverConfig.committeeContacts !== undefined && Array.isArray(serverConfig.committeeContacts)
+                ? serverConfig.committeeContacts
+                : (prev.committeeContacts || []),
+            committeeEmails:
+              serverConfig.committeeEmails !== undefined && Array.isArray(serverConfig.committeeEmails)
+                ? serverConfig.committeeEmails
+                : (prev.committeeEmails || []),
+            bankAccounts:
+              serverConfig.bankAccounts !== undefined && Array.isArray(serverConfig.bankAccounts)
+                ? serverConfig.bankAccounts
+                : (prev.bankAccounts || []),
+          };
+          safeLocalStorageSet('wabupcup_config', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    } catch (err) {
+      console.warn('Could not refresh config from server:', err);
+    }
+  }, []);
+
   // Initial load from server on app mount
   useEffect(() => {
-    // Fast initial config sync so sectionsVisibility is immediately updated within milliseconds
-    ApiService.getConfig()
-      .then(serverCfg => {
-        if (serverCfg) {
-          setConfig(prev => {
-            const merged: TournamentConfig = {
-              ...prev,
-              ...serverCfg,
-              sectionsVisibility: {
-                ...DEFAULT_SECTIONS_VISIBILITY,
-                ...(serverCfg.sectionsVisibility || prev.sectionsVisibility || {}),
-              },
-              sectionsBackgrounds: {
-                ...(prev.sectionsBackgrounds || {}),
-                ...(serverCfg.sectionsBackgrounds || {}),
-              },
-            };
-            safeLocalStorageSet('wabupcup_config', JSON.stringify(merged));
-            return merged;
-          });
-        }
-      })
-      .catch(() => {});
-
     refreshDataFromServer();
   }, [refreshDataFromServer]);
 
@@ -2862,7 +2881,12 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return { success: true, savedToDatabase: res.savedToDatabase };
     } catch (err: any) {
       console.warn('Could not sync created admin to backend:', err);
-      refreshDataFromServer();
+      ApiService.getAdmins(true).then(fresh => {
+        if (fresh && Array.isArray(fresh)) {
+          setAdminUsers(fresh);
+          safeLocalStorageSet('wabupcup_admins', JSON.stringify(fresh));
+        }
+      }).catch(() => {});
       return { success: false, error: err?.message || 'Gagal membuat admin' };
     }
   };
@@ -2887,7 +2911,12 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return { success: true, savedToDatabase: res.savedToDatabase };
     } catch (err: any) {
       console.warn('Could not sync updated admin to backend:', err);
-      refreshDataFromServer();
+      ApiService.getAdmins(true).then(fresh => {
+        if (fresh && Array.isArray(fresh)) {
+          setAdminUsers(fresh);
+          safeLocalStorageSet('wabupcup_admins', JSON.stringify(fresh));
+        }
+      }).catch(() => {});
       return { success: false, error: err?.message || 'Gagal mengupdate admin' };
     }
   };
@@ -2908,7 +2937,12 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return { success: true, savedToDatabase: res.savedToDatabase };
     } catch (err: any) {
       console.warn('Could not delete admin from backend:', err);
-      refreshDataFromServer();
+      ApiService.getAdmins(true).then(fresh => {
+        if (fresh && Array.isArray(fresh)) {
+          setAdminUsers(fresh);
+          safeLocalStorageSet('wabupcup_admins', JSON.stringify(fresh));
+        }
+      }).catch(() => {});
       return { success: false, error: err?.message || 'Gagal menghapus admin' };
     }
   };
@@ -2960,6 +2994,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         toggleTheme,
         config,
         updateConfig,
+        refreshConfig,
         refreshDataFromServer,
         isSyncingWithServer,
         downloadableDocs,

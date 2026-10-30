@@ -68,11 +68,6 @@ export function sanitizeAdmin(user: any): any {
 }
 
 
-const cachePublic = (req: Request, res: Response, next: any) => {
-  res.setHeader('Cache-Control', 'public, s-maxage=300');
-  next();
-};
-
 const cdnCache = (sMaxAge = 10, swr = 30) => (req: Request, res: Response, next: any) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -821,7 +816,7 @@ export function validateSponsorUrl(rawUrl: unknown): { valid: boolean; normalize
   return { valid: true, normalized: trimmed };
 }
 
-apiRouter.get('/sponsors', cachePublic, async (req: Request, res: Response) => {
+apiRouter.get('/sponsors', cdnCache(300, 600), async (req: Request, res: Response) => {
   const list = await Database.getSponsors();
   res.json(list);
 });

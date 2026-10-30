@@ -1637,7 +1637,9 @@ export const Database = {
 
     try {
       await this.calculateStandings(cat);
-      await this.syncPlayerStatsFromMatches(cat);
+      if (targetMatch?.events && Array.isArray(targetMatch.events) && targetMatch.events.length > 0) {
+        await this.syncPlayerStatsFromMatches(cat);
+      }
     } catch (err) {
       console.warn('Error updating standings/stats on deleteMatch:', err);
     }
@@ -1672,7 +1674,10 @@ export const Database = {
 
     try {
       await this.calculateStandings(category);
-      await this.syncPlayerStatsFromMatches(category);
+      const hasEvents = newMatches.some(m => Array.isArray(m.events) && m.events.length > 0);
+      if (hasEvents) {
+        await this.syncPlayerStatsFromMatches(category);
+      }
     } catch (err) {
       console.warn('Error updating standings/stats on replaceCategoryMatches:', err);
     }
@@ -1710,10 +1715,19 @@ export const Database = {
       }
     }
 
+    const categoriesWithEvents = new Set<string>();
+    for (const match of matchesToSave) {
+      if (Array.isArray(match.events) && match.events.length > 0) {
+        categoriesWithEvents.add(match.category);
+      }
+    }
+
     for (const cat of categoriesAffected) {
       try {
         await this.calculateStandings(cat);
-        await this.syncPlayerStatsFromMatches(cat);
+        if (categoriesWithEvents.has(cat)) {
+          await this.syncPlayerStatsFromMatches(cat);
+        }
       } catch (err) {
         console.warn('Error updating standings/stats on saveMatchesBatch:', err);
       }
