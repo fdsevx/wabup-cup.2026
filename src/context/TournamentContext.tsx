@@ -318,7 +318,7 @@ interface TournamentContextType {
   addGroup: (category: TournamentCategory, groupName: string) => void;
   deleteGroup: (category: TournamentCategory, groupName: string) => void;
   resetCategoryGroupsAndMatches: (category: TournamentCategory) => Promise<{ success: boolean; message: string }>;
-  syncKnockoutFromStandings: (category: TournamentCategory) => Promise<{ success: boolean; message: string; updatedCount?: number }>;
+  syncKnockoutFromStandings: (category: TournamentCategory | 'ALL') => Promise<{ success: boolean; message: string; updatedCount?: number }>;
 
   players: PlayerItem[];
   refreshPlayers: (hasStatsOnly?: boolean) => Promise<void>;
@@ -2135,6 +2135,8 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const grandFinalId = `match-${category.toLowerCase()}-final-${Date.now()}`;
     const thirdPlaceId = `match-${category.toLowerCase()}-3rd-${Date.now()}`;
 
+    const groupLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
     if (numGroups === 2) {
       generatedKnockout.push({
         id: thirdPlaceId,
@@ -2163,16 +2165,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         status: 'UPCOMING',
       });
     } else if (numGroups >= 3 && numGroups <= 4) {
-      const qfIds = [
-        `match-${category.toLowerCase()}-qf1-${Date.now()}`,
-        `match-${category.toLowerCase()}-qf2-${Date.now()}`,
-        `match-${category.toLowerCase()}-qf3-${Date.now()}`,
-        `match-${category.toLowerCase()}-qf4-${Date.now()}`,
-      ];
-      const sf1Id = `match-${category.toLowerCase()}-sf1-${Date.now()}`;
-      const sf2Id = `match-${category.toLowerCase()}-sf2-${Date.now()}`;
-
-      // 4 Perempat Final (8 Besar)
+      // 3 - 4 Grup (UMUM: 4 Grup -> 8 Besar / QF)
       const qfPairings = [
         { tA: 'Juara Grup A', tB: 'Runner-up Grup B', nextId: sf1Id, slot: 'A' as const },
         { tA: 'Juara Grup C', tB: numGroups >= 4 ? 'Runner-up Grup D' : 'Runner-up Grup A', nextId: sf1Id, slot: 'B' as const },
@@ -2186,7 +2179,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           matchNumber: counter++,
           category,
           round: `Perempat Final ${idx + 1} (8 Besar)`,
-          roundIndex: 3,
+          roundIndex: 2,
           teamA: { name: pair.tA, institution: 'Menunggu Hasil Grup' },
           teamB: { name: pair.tB, institution: 'Menunggu Hasil Grup' },
           date: '2026-10-29',
@@ -2204,7 +2197,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         matchNumber: counter++,
         category,
         round: 'Semifinal 1',
-        roundIndex: 4,
+        roundIndex: 3,
         teamA: { name: 'Pemenang Perempat Final 1', institution: 'TBD' },
         teamB: { name: 'Pemenang Perempat Final 2', institution: 'TBD' },
         date: '2026-10-30',
@@ -2214,13 +2207,12 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         nextMatchId: grandFinalId,
         nextMatchSlot: 'A',
       });
-
       generatedKnockout.push({
         id: sf2Id,
         matchNumber: counter++,
         category,
         round: 'Semifinal 2',
-        roundIndex: 4,
+        roundIndex: 3,
         teamA: { name: 'Pemenang Perempat Final 3', institution: 'TBD' },
         teamB: { name: 'Pemenang Perempat Final 4', institution: 'TBD' },
         date: '2026-10-30',
@@ -2237,7 +2229,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         matchNumber: counter++,
         category,
         round: 'Perebutan Juara 3',
-        roundIndex: 5,
+        roundIndex: 4,
         teamA: { name: 'Kalah Semifinal 1', institution: 'TBD' },
         teamB: { name: 'Kalah Semifinal 2', institution: 'TBD' },
         date: '2026-10-31',
@@ -2245,13 +2237,12 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         pitch: defaultVenue,
         status: 'UPCOMING',
       });
-
       generatedKnockout.push({
         id: grandFinalId,
         matchNumber: counter++,
         category,
         round: 'GRAND FINAL WABUP CUP 2026',
-        roundIndex: 6,
+        roundIndex: 5,
         teamA: { name: 'Pemenang Semifinal 1', institution: 'TBD' },
         teamB: { name: 'Pemenang Semifinal 2', institution: 'TBD' },
         date: '2026-10-31',
@@ -2259,34 +2250,25 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         pitch: defaultVenue,
         status: 'UPCOMING',
       });
-    } else if (numGroups >= 5) {
-      // 5-8 Grup -> BABAK 16 BESAR (8 Laga Silang Resmi)
-      const r16Ids = Array.from({ length: 8 }, (_, i) => `match-${category.toLowerCase()}-r16-${i + 1}-${Date.now()}`);
-      const qfIds = Array.from({ length: 4 }, (_, i) => `match-${category.toLowerCase()}-qf-${i + 1}-${Date.now()}`);
-      const sf1Id = `match-${category.toLowerCase()}-sf1-${Date.now()}`;
-      const sf2Id = `match-${category.toLowerCase()}-sf2-${Date.now()}`;
-
-      const r16Pairings = [
-        { tA: 'Juara Grup A', tB: 'Runner-up Grup B', nextId: qfIds[0], slot: 'A' as const },
-        { tA: 'Juara Grup C', tB: 'Runner-up Grup D', nextId: qfIds[0], slot: 'B' as const },
-        { tA: 'Juara Grup E', tB: 'Runner-up Grup F', nextId: qfIds[1], slot: 'A' as const },
-        { tA: 'Juara Grup G', tB: 'Runner-up Grup H', nextId: qfIds[1], slot: 'B' as const },
-        { tA: 'Juara Grup B', tB: 'Runner-up Grup A', nextId: qfIds[2], slot: 'A' as const },
-        { tA: 'Juara Grup D', tB: 'Runner-up Grup C', nextId: qfIds[2], slot: 'B' as const },
-        { tA: 'Juara Grup F', tB: 'Runner-up Grup E', nextId: qfIds[3], slot: 'A' as const },
-        { tA: 'Juara Grup H', tB: 'Runner-up Grup G', nextId: qfIds[3], slot: 'B' as const },
+    } else if (numGroups >= 5 && numGroups <= 8) {
+      // 5 - 8 Grup (INSTANSI, DESA: 6 Grup -> 8 Besar / QF dengan 6 Juara + 2 Runner-up Terbaik)
+      const qfPairings = [
+        { tA: 'Juara Grup A', tB: 'Runner-up Terbaik 1', nextId: sf1Id, slot: 'A' as const },
+        { tA: 'Juara Grup C', tB: numGroups >= 4 ? 'Juara Grup D' : 'Runner-up Grup A', nextId: sf1Id, slot: 'B' as const },
+        { tA: 'Juara Grup B', tB: 'Runner-up Terbaik 2', nextId: sf2Id, slot: 'A' as const },
+        { tA: numGroups >= 6 ? 'Juara Grup E' : 'Juara Grup B', tB: numGroups >= 6 ? 'Juara Grup F' : 'Runner-up Grup C', nextId: sf2Id, slot: 'B' as const },
       ];
 
-      r16Pairings.forEach((pair, idx) => {
+      qfPairings.forEach((pair, idx) => {
         generatedKnockout.push({
-          id: r16Ids[idx],
+          id: qfIds[idx],
           matchNumber: counter++,
           category,
-          round: `Babak 16 Besar - Match ${idx + 1}`,
+          round: `Perempat Final ${idx + 1} (8 Besar)`,
           roundIndex: 2,
           teamA: { name: pair.tA, institution: 'Menunggu Hasil Grup' },
           teamB: { name: pair.tB, institution: 'Menunggu Hasil Grup' },
-          date: '2026-10-27',
+          date: '2026-10-29',
           time: kickoffTimes[idx % kickoffTimes.length],
           pitch: pitches[idx % pitches.length],
           status: 'UPCOMING',
@@ -2294,6 +2276,136 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           nextMatchSlot: pair.slot,
         });
       });
+
+      // 2 Semifinal
+      generatedKnockout.push({
+        id: sf1Id,
+        matchNumber: counter++,
+        category,
+        round: 'Semifinal 1',
+        roundIndex: 3,
+        teamA: { name: 'Pemenang Perempat Final 1', institution: 'TBD' },
+        teamB: { name: 'Pemenang Perempat Final 2', institution: 'TBD' },
+        date: '2026-10-30',
+        time: '15:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+        nextMatchId: grandFinalId,
+        nextMatchSlot: 'A',
+      });
+      generatedKnockout.push({
+        id: sf2Id,
+        matchNumber: counter++,
+        category,
+        round: 'Semifinal 2',
+        roundIndex: 3,
+        teamA: { name: 'Pemenang Perempat Final 3', institution: 'TBD' },
+        teamB: { name: 'Pemenang Perempat Final 4', institution: 'TBD' },
+        date: '2026-10-30',
+        time: '16:30',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+        nextMatchId: grandFinalId,
+        nextMatchSlot: 'B',
+      });
+
+      // Perebutan Juara 3 & Grand Final
+      generatedKnockout.push({
+        id: thirdPlaceId,
+        matchNumber: counter++,
+        category,
+        round: 'Perebutan Juara 3',
+        roundIndex: 4,
+        teamA: { name: 'Kalah Semifinal 1', institution: 'TBD' },
+        teamB: { name: 'Kalah Semifinal 2', institution: 'TBD' },
+        date: '2026-10-31',
+        time: '16:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
+      generatedKnockout.push({
+        id: grandFinalId,
+        matchNumber: counter++,
+        category,
+        round: 'GRAND FINAL WABUP CUP 2026',
+        roundIndex: 5,
+        teamA: { name: 'Pemenang Semifinal 1', institution: 'TBD' },
+        teamB: { name: 'Pemenang Semifinal 2', institution: 'TBD' },
+        date: '2026-10-31',
+        time: '19:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
+    } else if (numGroups >= 9 && numGroups <= 11) {
+      // 9 - 11 Grup (SD: 11 Grup -> 22 Besar: 6 Play-Off + 8 Laga 16 Besar [10 BYE])
+      const poIds = Array.from({ length: 6 }, (_, i) => `match-${category.toLowerCase()}-po-${i + 1}-${Date.now()}`);
+      const r16Ids = Array.from({ length: 8 }, (_, i) => `match-${category.toLowerCase()}-r16-${i + 1}-${Date.now()}`);
+
+      // 6 Laga Play-off 22 Besar
+      const poPairings = [
+        { tA: 'Runner-up Grup A', tB: 'Runner-up Grup B', targetR16: r16Ids[0] },
+        { tA: 'Runner-up Grup C', tB: 'Runner-up Grup D', targetR16: r16Ids[1] },
+        { tA: 'Runner-up Grup E', tB: 'Runner-up Grup F', targetR16: r16Ids[2] },
+        { tA: 'Runner-up Grup G', tB: 'Runner-up Grup H', targetR16: r16Ids[3] },
+        { tA: 'Runner-up Grup I', tB: 'Runner-up Grup J', targetR16: r16Ids[4] },
+        { tA: 'Runner-up Grup K', tB: 'Juara Grup K',     targetR16: r16Ids[5] },
+      ];
+
+      poPairings.forEach((pair, idx) => {
+        generatedKnockout.push({
+          id: poIds[idx],
+          matchNumber: counter++,
+          category,
+          round: `Play-off 22 Besar - Match ${idx + 1}`,
+          roundIndex: 1,
+          teamA: { name: pair.tA, institution: 'Menunggu Hasil Grup' },
+          teamB: { name: pair.tB, institution: 'Menunggu Hasil Grup' },
+          date: '2026-10-26',
+          time: kickoffTimes[idx % kickoffTimes.length],
+          pitch: pitches[idx % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: pair.targetR16,
+          nextMatchSlot: 'B',
+        });
+      });
+
+      // 8 Laga 16 Besar:
+      // Match 1-6: Juara Grup A-F (HAK BYE) vs Pemenang Play-off 1-6
+      // Match 7: Juara Grup G vs Juara Grup H
+      // Match 8: Juara Grup I vs Juara Grup J
+      for (let i = 0; i < 8; i++) {
+        const assignedQfId = qfIds[Math.floor(i / 2)];
+        const assignedQfSlot: 'A' | 'B' = i % 2 === 0 ? 'A' : 'B';
+        let tAName = '';
+        let tBName = '';
+
+        if (i < 6) {
+          tAName = `Juara Grup ${groupLetters[i]}`;
+          tBName = `Pemenang Play-off ${i + 1}`;
+        } else if (i === 6) {
+          tAName = 'Juara Grup G';
+          tBName = 'Juara Grup H';
+        } else {
+          tAName = 'Juara Grup I';
+          tBName = 'Juara Grup J';
+        }
+
+        generatedKnockout.push({
+          id: r16Ids[i],
+          matchNumber: counter++,
+          category,
+          round: `Babak 16 Besar - Match ${i + 1}`,
+          roundIndex: 2,
+          teamA: { name: tAName, institution: i < 6 ? 'Lolos Otomatis (BYE)' : 'Menunggu Hasil Grup' },
+          teamB: { name: tBName, institution: 'TBD' },
+          date: '2026-10-28',
+          time: kickoffTimes[i % kickoffTimes.length],
+          pitch: pitches[i % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: assignedQfId,
+          nextMatchSlot: assignedQfSlot,
+        });
+      }
 
       // 4 Perempat Final (8 Besar)
       for (let i = 0; i < 4; i++) {
@@ -2332,7 +2444,6 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         nextMatchId: grandFinalId,
         nextMatchSlot: 'A',
       });
-
       generatedKnockout.push({
         id: sf2Id,
         matchNumber: counter++,
@@ -2363,7 +2474,164 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         pitch: defaultVenue,
         status: 'UPCOMING',
       });
+      generatedKnockout.push({
+        id: grandFinalId,
+        matchNumber: counter++,
+        category,
+        round: 'GRAND FINAL WABUP CUP 2026',
+        roundIndex: 6,
+        teamA: { name: 'Pemenang Semifinal 1', institution: 'TBD' },
+        teamB: { name: 'Pemenang Semifinal 2', institution: 'TBD' },
+        date: '2026-10-31',
+        time: '19:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
+    } else {
+      // 12+ Grup (SMA: 16 Grup, SMP: 17 Grup -> BABAK 32 BESAR: 16 Laga R32 -> 8 Laga R16 -> 4 QF -> 2 SF -> 3rd/Final)
+      const r32Ids = Array.from({ length: 16 }, (_, i) => `match-${category.toLowerCase()}-r32-${i + 1}-${Date.now()}`);
+      const r16Ids = Array.from({ length: 8 }, (_, i) => `match-${category.toLowerCase()}-r16-${i + 1}-${Date.now()}`);
 
+      // 16 Laga 32 Besar
+      for (let i = 0; i < 16; i++) {
+        const assignedR16Id = r16Ids[Math.floor(i / 2)];
+        const assignedR16Slot: 'A' | 'B' = i % 2 === 0 ? 'A' : 'B';
+        let tAName = '';
+        let tBName = '';
+
+        if (numGroups === 16) {
+          // Format SMA (16 Grup A s/d P)
+          if (i < 8) {
+            const letterA = groupLetters[i * 2];       // A, C, E, G, I, K, M, O
+            const letterB = groupLetters[i * 2 + 1];   // B, D, F, H, J, L, N, P
+            tAName = `Juara Grup ${letterA}`;
+            tBName = `Runner-up Grup ${letterB}`;
+          } else {
+            const idxBase = i - 8;
+            const letterA = groupLetters[idxBase * 2 + 1]; // B, D, F, H, J, L, N, P
+            const letterB = groupLetters[idxBase * 2];     // A, C, E, G, I, K, M, O
+            tAName = `Juara Grup ${letterA}`;
+            tBName = `Runner-up Grup ${letterB}`;
+          }
+        } else if (numGroups >= 17) {
+          // Format SMP (17 Grup A s/d Q)
+          if (i < 15) {
+            tAName = `Juara Grup ${groupLetters[i]}`;
+            tBName = `Runner-up Terbaik ${15 - i}`;
+          } else {
+            tAName = 'Juara Grup P';
+            tBName = 'Juara Grup Q';
+          }
+        } else {
+          tAName = `Juara Grup ${groupLetters[i % groupLetters.length]}`;
+          tBName = `Runner-up Grup ${groupLetters[(i + 1) % groupLetters.length]}`;
+        }
+
+        generatedKnockout.push({
+          id: r32Ids[i],
+          matchNumber: counter++,
+          category,
+          round: `Babak 32 Besar - Match ${i + 1}`,
+          roundIndex: 1,
+          teamA: { name: tAName, institution: 'Menunggu Hasil Grup' },
+          teamB: { name: tBName, institution: 'Menunggu Hasil Grup' },
+          date: '2026-10-26',
+          time: kickoffTimes[i % kickoffTimes.length],
+          pitch: pitches[i % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: assignedR16Id,
+          nextMatchSlot: assignedR16Slot,
+        });
+      }
+
+      // 8 Laga 16 Besar
+      for (let i = 0; i < 8; i++) {
+        const assignedQfId = qfIds[Math.floor(i / 2)];
+        const assignedQfSlot: 'A' | 'B' = i % 2 === 0 ? 'A' : 'B';
+        generatedKnockout.push({
+          id: r16Ids[i],
+          matchNumber: counter++,
+          category,
+          round: `Babak 16 Besar - Match ${i + 1}`,
+          roundIndex: 2,
+          teamA: { name: `Pemenang 32 Besar Match ${i * 2 + 1}`, institution: 'TBD' },
+          teamB: { name: `Pemenang 32 Besar Match ${i * 2 + 2}`, institution: 'TBD' },
+          date: '2026-10-28',
+          time: kickoffTimes[i % kickoffTimes.length],
+          pitch: pitches[i % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: assignedQfId,
+          nextMatchSlot: assignedQfSlot,
+        });
+      }
+
+      // 4 Perempat Final (8 Besar)
+      for (let i = 0; i < 4; i++) {
+        const assignedNextId = i < 2 ? sf1Id : sf2Id;
+        const assignedNextSlot: 'A' | 'B' = i % 2 === 0 ? 'A' : 'B';
+        generatedKnockout.push({
+          id: qfIds[i],
+          matchNumber: counter++,
+          category,
+          round: `Perempat Final ${i + 1} (8 Besar)`,
+          roundIndex: 3,
+          teamA: { name: `Pemenang 16 Besar Match ${i * 2 + 1}`, institution: 'TBD' },
+          teamB: { name: `Pemenang 16 Besar Match ${i * 2 + 2}`, institution: 'TBD' },
+          date: '2026-10-29',
+          time: kickoffTimes[i % kickoffTimes.length],
+          pitch: pitches[i % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: assignedNextId,
+          nextMatchSlot: assignedNextSlot,
+        });
+      }
+
+      // 2 Semifinal
+      generatedKnockout.push({
+        id: sf1Id,
+        matchNumber: counter++,
+        category,
+        round: 'Semifinal 1',
+        roundIndex: 4,
+        teamA: { name: 'Pemenang Perempat Final 1', institution: 'TBD' },
+        teamB: { name: 'Pemenang Perempat Final 2', institution: 'TBD' },
+        date: '2026-10-30',
+        time: '15:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+        nextMatchId: grandFinalId,
+        nextMatchSlot: 'A',
+      });
+      generatedKnockout.push({
+        id: sf2Id,
+        matchNumber: counter++,
+        category,
+        round: 'Semifinal 2',
+        roundIndex: 4,
+        teamA: { name: 'Pemenang Perempat Final 3', institution: 'TBD' },
+        teamB: { name: 'Pemenang Perempat Final 4', institution: 'TBD' },
+        date: '2026-10-30',
+        time: '16:30',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+        nextMatchId: grandFinalId,
+        nextMatchSlot: 'B',
+      });
+
+      // Perebutan Juara 3 & Grand Final
+      generatedKnockout.push({
+        id: thirdPlaceId,
+        matchNumber: counter++,
+        category,
+        round: 'Perebutan Juara 3',
+        roundIndex: 5,
+        teamA: { name: 'Kalah Semifinal 1', institution: 'TBD' },
+        teamB: { name: 'Kalah Semifinal 2', institution: 'TBD' },
+        date: '2026-10-31',
+        time: '16:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
       generatedKnockout.push({
         id: grandFinalId,
         matchNumber: counter++,
@@ -2474,8 +2742,26 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const syncKnockoutFromStandings = async (
-    category: TournamentCategory
+    category: TournamentCategory | 'ALL'
   ): Promise<{ success: boolean; message: string; updatedCount?: number }> => {
+    if (category === 'ALL') {
+      const activeCats: TournamentCategory[] = categories.length > 0
+        ? categories.map(c => c.id as TournamentCategory)
+        : ['SD', 'SMP', 'SMA', 'INSTANSI', 'DESA', 'UMUM'];
+      let totalUpdated = 0;
+      for (const cat of activeCats) {
+        const res = await syncKnockoutFromStandings(cat);
+        if (res.success && res.updatedCount) {
+          totalUpdated += res.updatedCount;
+        }
+      }
+      return {
+        success: true,
+        message: `Sinkronisasi knockout berhasil untuk semua ${activeCats.length} kategori (${totalUpdated} slot tim terisi/diperbarui).`,
+        updatedCount: totalUpdated,
+      };
+    }
+
     const catGroups = groups.filter(g => g.category === category);
     if (catGroups.length === 0) {
       return { success: false, message: `Belum ada susunan grup yang dibentuk untuk kategori ${category}.` };
@@ -2486,6 +2772,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       !m.group ||
       m.round.toLowerCase().includes('final') ||
       m.round.toLowerCase().includes('16 besar') ||
+      m.round.toLowerCase().includes('32 besar') ||
+      m.round.toLowerCase().includes('play-off') ||
+      m.round.toLowerCase().includes('playoff') ||
       m.round.toLowerCase().includes('perempat') ||
       m.round.toLowerCase().includes('gugur');
 
@@ -2514,75 +2803,153 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     const computedStandings = computeStandingsFromData(matches, groups, registrations, category);
+
+    // Mini-standings cross-group rankings for Best Winners and Best Runner-ups
+    interface GroupRankedTeam {
+      groupName: string;
+      rankInGroup: number;
+      teamName: string;
+      institution?: string;
+      logo?: string;
+      points: number;
+      goalDiff: number;
+      goalsFor: number;
+      goalsAgainst: number;
+    }
+
+    const allJuara: GroupRankedTeam[] = [];
+    const allRunnerUp: GroupRankedTeam[] = [];
+    const groupJuaraMap: Record<string, GroupRankedTeam> = {};
+    const groupRunnerUpMap: Record<string, GroupRankedTeam> = {};
+
+    catGroups.forEach(grp => {
+      const gLetter = grp.groupName.replace(/grup\s*/i, '').trim().toUpperCase();
+      const gKey = `${category}:::${grp.groupName}`;
+      const gStandings = computedStandings[gKey];
+      if (gStandings && gStandings.length > 0) {
+        if (gStandings[0]) {
+          const item: GroupRankedTeam = {
+            groupName: grp.groupName,
+            rankInGroup: 1,
+            teamName: gStandings[0].teamName,
+            institution: gStandings[0].institution,
+            logo: gStandings[0].teamLogo,
+            points: gStandings[0].points || 0,
+            goalDiff: (gStandings[0].goalsFor || 0) - (gStandings[0].goalsAgainst || 0),
+            goalsFor: gStandings[0].goalsFor || 0,
+            goalsAgainst: gStandings[0].goalsAgainst || 0,
+          };
+          allJuara.push(item);
+          groupJuaraMap[gLetter] = item;
+        }
+        if (gStandings[1]) {
+          const item: GroupRankedTeam = {
+            groupName: grp.groupName,
+            rankInGroup: 2,
+            teamName: gStandings[1].teamName,
+            institution: gStandings[1].institution,
+            logo: gStandings[1].teamLogo,
+            points: gStandings[1].points || 0,
+            goalDiff: (gStandings[1].goalsFor || 0) - (gStandings[1].goalsAgainst || 0),
+            goalsFor: gStandings[1].goalsFor || 0,
+            goalsAgainst: gStandings[1].goalsAgainst || 0,
+          };
+          allRunnerUp.push(item);
+          groupRunnerUpMap[gLetter] = item;
+        }
+      }
+    });
+
+    const sortMiniStandings = (a: GroupRankedTeam, b: GroupRankedTeam) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff;
+      if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
+      return a.teamName.localeCompare(b.teamName);
+    };
+
+    allJuara.sort(sortMiniStandings);
+    allRunnerUp.sort(sortMiniStandings);
+
     let updatedCount = 0;
     const modifiedKnockoutList: MatchItem[] = [];
 
-    const updatedKnockout = currentKnockout.map(m => {
+    const resolveTeamSlot = (teamObj: { name: string; institution?: string; logo?: string }): { name: string; institution?: string; logo?: string; changed: boolean } => {
       let changed = false;
-      const newA = { ...m.teamA };
-      const newB = { ...m.teamB };
+      const res = { ...teamObj };
 
-      const isGroupReady = (letter: string) => {
-        const gKey = `${category}:::Grup ${letter}`;
-        return Boolean(computedStandings[gKey] && computedStandings[gKey].length > 0);
-      };
-
-      // 1. Juara / Pemenang Grup
-      const winA = m.teamA.name.match(/(?:Juara|Pemenang)\s+Grup\s+([A-Za-z])/i);
-      if (winA && isGroupReady(winA[1].toUpperCase())) {
-        const grpStanding = computedStandings[`${category}:::Grup ${winA[1].toUpperCase()}`];
-        if (grpStanding && grpStanding[0] && newA.name !== grpStanding[0].teamName) {
-          newA.name = grpStanding[0].teamName;
-          newA.institution = grpStanding[0].institution || newA.institution;
-          newA.logo = grpStanding[0].teamLogo || newA.logo;
+      // A. Juara Grup X (A-Z)
+      const winGrp = res.name.match(/(?:Juara|Pemenang)\s+Grup\s+([A-Za-z])/i);
+      if (winGrp) {
+        const letter = winGrp[1].toUpperCase();
+        const found = groupJuaraMap[letter];
+        if (found && res.name !== found.teamName) {
+          res.name = found.teamName;
+          res.institution = found.institution || res.institution;
+          res.logo = found.logo || res.logo;
           changed = true;
         }
       }
 
-      const winB = m.teamB.name.match(/(?:Juara|Pemenang)\s+Grup\s+([A-Za-z])/i);
-      if (winB && isGroupReady(winB[1].toUpperCase())) {
-        const grpStanding = computedStandings[`${category}:::Grup ${winB[1].toUpperCase()}`];
-        if (grpStanding && grpStanding[0] && newB.name !== grpStanding[0].teamName) {
-          newB.name = grpStanding[0].teamName;
-          newB.institution = grpStanding[0].institution || newB.institution;
-          newB.logo = grpStanding[0].teamLogo || newB.logo;
+      // B. Runner-up Grup X (A-Z)
+      const runGrp = res.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Grup\s+([A-Za-z])/i);
+      if (runGrp) {
+        const letter = runGrp[1].toUpperCase();
+        const found = groupRunnerUpMap[letter];
+        if (found && res.name !== found.teamName) {
+          res.name = found.teamName;
+          res.institution = found.institution || res.institution;
+          res.logo = found.logo || res.logo;
           changed = true;
         }
       }
 
-      // 2. Runner-up / Peringkat 2 Grup
-      const runA = m.teamA.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Grup\s+([A-Za-z])/i);
-      if (runA && isGroupReady(runA[1].toUpperCase())) {
-        const grpStanding = computedStandings[`${category}:::Grup ${runA[1].toUpperCase()}`];
-        if (grpStanding && grpStanding[1] && newA.name !== grpStanding[1].teamName) {
-          newA.name = grpStanding[1].teamName;
-          newA.institution = grpStanding[1].institution || newA.institution;
-          newA.logo = grpStanding[1].teamLogo || newA.logo;
+      // C. Juara Terbaik N
+      const winBest = res.name.match(/(?:Juara|Pemenang)\s+Terbaik\s+(\d+)/i);
+      if (winBest) {
+        const rankIdx = parseInt(winBest[1], 10) - 1;
+        const found = allJuara[rankIdx];
+        if (found && res.name !== found.teamName) {
+          res.name = found.teamName;
+          res.institution = found.institution || res.institution;
+          res.logo = found.logo || res.logo;
           changed = true;
         }
       }
 
-      const runB = m.teamB.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Grup\s+([A-Za-z])/i);
-      if (runB && isGroupReady(runB[1].toUpperCase())) {
-        const grpStanding = computedStandings[`${category}:::Grup ${runB[1].toUpperCase()}`];
-        if (grpStanding && grpStanding[1] && newB.name !== grpStanding[1].teamName) {
-          newB.name = grpStanding[1].teamName;
-          newB.institution = grpStanding[1].institution || newB.institution;
-          newB.logo = grpStanding[1].teamLogo || newB.logo;
+      // D. Runner-up Terbaik N
+      const runBest = res.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Terbaik\s+(\d+)/i);
+      if (runBest) {
+        const rankIdx = parseInt(runBest[1], 10) - 1;
+        const found = allRunnerUp[rankIdx];
+        if (found && res.name !== found.teamName) {
+          res.name = found.teamName;
+          res.institution = found.institution || res.institution;
+          res.logo = found.logo || res.logo;
           changed = true;
         }
       }
 
-      if (changed) {
+      return { ...res, changed };
+    };
+
+    const updatedKnockout = currentKnockout.map(m => {
+      const resA = resolveTeamSlot(m.teamA);
+      const resB = resolveTeamSlot(m.teamB);
+
+      if (resA.changed || resB.changed) {
         updatedCount++;
-        const mod = { ...m, teamA: newA, teamB: newB };
+        const mod: MatchItem = {
+          ...m,
+          teamA: { ...m.teamA, name: resA.name, institution: resA.institution, logo: resA.logo },
+          teamB: { ...m.teamB, name: resB.name, institution: resB.institution, logo: resB.logo },
+        };
         modifiedKnockoutList.push(mod);
         return mod;
       }
       return m;
     });
 
-    // Advance winners for finished knockout matches (e.g. 16 Besar finished -> moves to QF)
+    // Advance winners for finished knockout matches (Playoff -> R16 -> QF -> SF -> Final)
     const finalizedKnockout = updatedKnockout.map(m => {
       if (m.status === 'FINISHED' && (m.winnerId === 'A' || m.winnerId === 'B') && m.nextMatchId) {
         const winningTeam = m.winnerId === 'A' ? m.teamA : m.teamB;
@@ -3044,6 +3411,46 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return (gMatches.length > 0 && gMatches.every(m => m.status === 'FINISHED')) || allGroupFinished;
     };
 
+    const catGroups = groups.filter(g => g.category === cat);
+    const allJuara: { teamName: string; institution?: string; logo?: string; points: number; goalDiff: number; goalsFor: number }[] = [];
+    const allRunnerUp: { teamName: string; institution?: string; logo?: string; points: number; goalDiff: number; goalsFor: number }[] = [];
+
+    catGroups.forEach(grp => {
+      const gKey = `${cat}:::${grp.groupName}`;
+      const gStandings = computedStandings[gKey];
+      if (gStandings && gStandings.length > 0) {
+        if (gStandings[0]) {
+          allJuara.push({
+            teamName: gStandings[0].teamName,
+            institution: gStandings[0].institution,
+            logo: gStandings[0].teamLogo,
+            points: gStandings[0].points || 0,
+            goalDiff: (gStandings[0].goalsFor || 0) - (gStandings[0].goalsAgainst || 0),
+            goalsFor: gStandings[0].goalsFor || 0,
+          });
+        }
+        if (gStandings[1]) {
+          allRunnerUp.push({
+            teamName: gStandings[1].teamName,
+            institution: gStandings[1].institution,
+            logo: gStandings[1].teamLogo,
+            points: gStandings[1].points || 0,
+            goalDiff: (gStandings[1].goalsFor || 0) - (gStandings[1].goalsAgainst || 0),
+            goalsFor: gStandings[1].goalsFor || 0,
+          });
+        }
+      }
+    });
+
+    const sortMini = (a: any, b: any) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff;
+      if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
+      return a.teamName.localeCompare(b.teamName);
+    };
+    allJuara.sort(sortMini);
+    allRunnerUp.sort(sortMini);
+
     const modifiedKnockouts: MatchItem[] = [];
     const updatedWithKnockoutWinners = newMatches.map(m => {
       if (m.category === cat && !m.group) {
@@ -3051,7 +3458,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const newA = { ...m.teamA };
         const newB = { ...m.teamB };
 
-        // 1. Juara / Pemenang Grup A-H
+        // 1. Juara / Pemenang Grup A-Z
         const matchWinnerA = m.teamA.name.match(/(?:Juara|Pemenang)\s+Grup\s+([A-Za-z])/i);
         if (matchWinnerA && isGroupReady(matchWinnerA[1].toUpperCase())) {
           const grpLetter = matchWinnerA[1].toUpperCase();
@@ -3075,7 +3482,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         }
 
-        // 2. Runner-up / Peringkat 2 Grup A-H
+        // 2. Runner-up / Peringkat 2 Grup A-Z
         const matchRunnerA = m.teamA.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Grup\s+([A-Za-z])/i);
         if (matchRunnerA && isGroupReady(matchRunnerA[1].toUpperCase())) {
           const grpLetter = matchRunnerA[1].toUpperCase();
@@ -3095,6 +3502,54 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             newB.name = grpStanding[1].teamName;
             newB.institution = grpStanding[1].institution || newB.institution;
             newB.logo = grpStanding[1].teamLogo || newB.logo;
+            changed = true;
+          }
+        }
+
+        // 3. Juara Terbaik N
+        const matchBestWinA = m.teamA.name.match(/(?:Juara|Pemenang)\s+Terbaik\s+(\d+)/i);
+        if (matchBestWinA) {
+          const rankIdx = parseInt(matchBestWinA[1], 10) - 1;
+          const found = allJuara[rankIdx];
+          if (found && newA.name !== found.teamName) {
+            newA.name = found.teamName;
+            newA.institution = found.institution || newA.institution;
+            newA.logo = found.logo || newA.logo;
+            changed = true;
+          }
+        }
+        const matchBestWinB = m.teamB.name.match(/(?:Juara|Pemenang)\s+Terbaik\s+(\d+)/i);
+        if (matchBestWinB) {
+          const rankIdx = parseInt(matchBestWinB[1], 10) - 1;
+          const found = allJuara[rankIdx];
+          if (found && newB.name !== found.teamName) {
+            newB.name = found.teamName;
+            newB.institution = found.institution || newB.institution;
+            newB.logo = found.logo || newB.logo;
+            changed = true;
+          }
+        }
+
+        // 4. Runner-up Terbaik N
+        const matchBestRunA = m.teamA.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Terbaik\s+(\d+)/i);
+        if (matchBestRunA) {
+          const rankIdx = parseInt(matchBestRunA[1], 10) - 1;
+          const found = allRunnerUp[rankIdx];
+          if (found && newA.name !== found.teamName) {
+            newA.name = found.teamName;
+            newA.institution = found.institution || newA.institution;
+            newA.logo = found.logo || newA.logo;
+            changed = true;
+          }
+        }
+        const matchBestRunB = m.teamB.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Terbaik\s+(\d+)/i);
+        if (matchBestRunB) {
+          const rankIdx = parseInt(matchBestRunB[1], 10) - 1;
+          const found = allRunnerUp[rankIdx];
+          if (found && newB.name !== found.teamName) {
+            newB.name = found.teamName;
+            newB.institution = found.institution || newB.institution;
+            newB.logo = found.logo || newB.logo;
             changed = true;
           }
         }

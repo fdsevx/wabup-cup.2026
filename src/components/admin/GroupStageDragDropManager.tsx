@@ -525,17 +525,17 @@ export const GroupStageDragDropManager: React.FC = () => {
             </button>
           )}
 
-          {/* Tombol Sinkronkan Bagan 16 Besar / Knockout dari Klasemen */}
+          {/* Tombol Sinkronkan Bagan Knockout dari Klasemen */}
           {currentCategoryGroups.length > 0 && (
             <button
               type="button"
               onClick={handleSyncKnockout}
               disabled={isProcessing}
               className="px-4 py-2.5 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 hover:text-white text-xs font-bold border border-indigo-700/80 transition flex items-center space-x-2 cursor-pointer shadow-sm"
-              title="Cek klasemen terkini dan masukkan tim peringkat 1 & 2 ke jadwal Babak 16 Besar s/d Final"
+              title={`Cek klasemen terkini dan masukkan tim lolos ke jadwal bagan babak gugur kategori ${selectedCat}`}
             >
               <Trophy className="w-4 h-4 text-amber-400" />
-              <span>⚡ Sinkronkan 16 Besar & Knockout</span>
+              <span>⚡ Sinkronkan Knockout ({selectedCat})</span>
             </button>
           )}
 
