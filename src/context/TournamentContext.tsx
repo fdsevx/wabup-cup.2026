@@ -318,6 +318,7 @@ interface TournamentContextType {
   addGroup: (category: TournamentCategory, groupName: string) => void;
   deleteGroup: (category: TournamentCategory, groupName: string) => void;
   resetCategoryGroupsAndMatches: (category: TournamentCategory) => Promise<{ success: boolean; message: string }>;
+  syncKnockoutFromStandings: (category: TournamentCategory) => Promise<{ success: boolean; message: string; updatedCount?: number }>;
 
   players: PlayerItem[];
   refreshPlayers: (hasStatsOnly?: boolean) => Promise<void>;
@@ -2119,6 +2120,268 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
+  const generateKnockoutMatches = (
+    category: TournamentCategory,
+    numGroups: number,
+    startMatchCounter: number,
+    baseDate: string,
+    defaultVenue: string,
+    kickoffTimes: string[],
+    pitches: string[]
+  ): MatchItem[] => {
+    const generatedKnockout: MatchItem[] = [];
+    let counter = startMatchCounter;
+
+    const grandFinalId = `match-${category.toLowerCase()}-final-${Date.now()}`;
+    const thirdPlaceId = `match-${category.toLowerCase()}-3rd-${Date.now()}`;
+
+    if (numGroups === 2) {
+      generatedKnockout.push({
+        id: thirdPlaceId,
+        matchNumber: counter++,
+        category,
+        round: 'Perebutan Juara 3',
+        roundIndex: 4,
+        teamA: { name: 'Runner-up Grup A', institution: 'Menunggu Hasil Grup' },
+        teamB: { name: 'Runner-up Grup B', institution: 'Menunggu Hasil Grup' },
+        date: '2026-10-31',
+        time: '16:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
+      generatedKnockout.push({
+        id: grandFinalId,
+        matchNumber: counter++,
+        category,
+        round: 'GRAND FINAL WABUP CUP 2026',
+        roundIndex: 5,
+        teamA: { name: 'Juara Grup A', institution: 'Menunggu Hasil Grup' },
+        teamB: { name: 'Juara Grup B', institution: 'Menunggu Hasil Grup' },
+        date: '2026-10-31',
+        time: '19:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
+    } else if (numGroups >= 3 && numGroups <= 4) {
+      const qfIds = [
+        `match-${category.toLowerCase()}-qf1-${Date.now()}`,
+        `match-${category.toLowerCase()}-qf2-${Date.now()}`,
+        `match-${category.toLowerCase()}-qf3-${Date.now()}`,
+        `match-${category.toLowerCase()}-qf4-${Date.now()}`,
+      ];
+      const sf1Id = `match-${category.toLowerCase()}-sf1-${Date.now()}`;
+      const sf2Id = `match-${category.toLowerCase()}-sf2-${Date.now()}`;
+
+      // 4 Perempat Final (8 Besar)
+      const qfPairings = [
+        { tA: 'Juara Grup A', tB: 'Runner-up Grup B', nextId: sf1Id, slot: 'A' as const },
+        { tA: 'Juara Grup C', tB: numGroups >= 4 ? 'Runner-up Grup D' : 'Runner-up Grup A', nextId: sf1Id, slot: 'B' as const },
+        { tA: 'Juara Grup B', tB: 'Runner-up Grup A', nextId: sf2Id, slot: 'A' as const },
+        { tA: numGroups >= 4 ? 'Juara Grup D' : 'Juara Grup B', tB: 'Runner-up Grup C', nextId: sf2Id, slot: 'B' as const },
+      ];
+
+      qfPairings.forEach((pair, idx) => {
+        generatedKnockout.push({
+          id: qfIds[idx],
+          matchNumber: counter++,
+          category,
+          round: `Perempat Final ${idx + 1} (8 Besar)`,
+          roundIndex: 3,
+          teamA: { name: pair.tA, institution: 'Menunggu Hasil Grup' },
+          teamB: { name: pair.tB, institution: 'Menunggu Hasil Grup' },
+          date: '2026-10-29',
+          time: kickoffTimes[idx % kickoffTimes.length],
+          pitch: pitches[idx % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: pair.nextId,
+          nextMatchSlot: pair.slot,
+        });
+      });
+
+      // 2 Semifinal
+      generatedKnockout.push({
+        id: sf1Id,
+        matchNumber: counter++,
+        category,
+        round: 'Semifinal 1',
+        roundIndex: 4,
+        teamA: { name: 'Pemenang Perempat Final 1', institution: 'TBD' },
+        teamB: { name: 'Pemenang Perempat Final 2', institution: 'TBD' },
+        date: '2026-10-30',
+        time: '15:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+        nextMatchId: grandFinalId,
+        nextMatchSlot: 'A',
+      });
+
+      generatedKnockout.push({
+        id: sf2Id,
+        matchNumber: counter++,
+        category,
+        round: 'Semifinal 2',
+        roundIndex: 4,
+        teamA: { name: 'Pemenang Perempat Final 3', institution: 'TBD' },
+        teamB: { name: 'Pemenang Perempat Final 4', institution: 'TBD' },
+        date: '2026-10-30',
+        time: '16:30',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+        nextMatchId: grandFinalId,
+        nextMatchSlot: 'B',
+      });
+
+      // Perebutan Juara 3 & Grand Final
+      generatedKnockout.push({
+        id: thirdPlaceId,
+        matchNumber: counter++,
+        category,
+        round: 'Perebutan Juara 3',
+        roundIndex: 5,
+        teamA: { name: 'Kalah Semifinal 1', institution: 'TBD' },
+        teamB: { name: 'Kalah Semifinal 2', institution: 'TBD' },
+        date: '2026-10-31',
+        time: '16:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
+
+      generatedKnockout.push({
+        id: grandFinalId,
+        matchNumber: counter++,
+        category,
+        round: 'GRAND FINAL WABUP CUP 2026',
+        roundIndex: 6,
+        teamA: { name: 'Pemenang Semifinal 1', institution: 'TBD' },
+        teamB: { name: 'Pemenang Semifinal 2', institution: 'TBD' },
+        date: '2026-10-31',
+        time: '19:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
+    } else if (numGroups >= 5) {
+      // 5-8 Grup -> BABAK 16 BESAR (8 Laga Silang Resmi)
+      const r16Ids = Array.from({ length: 8 }, (_, i) => `match-${category.toLowerCase()}-r16-${i + 1}-${Date.now()}`);
+      const qfIds = Array.from({ length: 4 }, (_, i) => `match-${category.toLowerCase()}-qf-${i + 1}-${Date.now()}`);
+      const sf1Id = `match-${category.toLowerCase()}-sf1-${Date.now()}`;
+      const sf2Id = `match-${category.toLowerCase()}-sf2-${Date.now()}`;
+
+      const r16Pairings = [
+        { tA: 'Juara Grup A', tB: 'Runner-up Grup B', nextId: qfIds[0], slot: 'A' as const },
+        { tA: 'Juara Grup C', tB: 'Runner-up Grup D', nextId: qfIds[0], slot: 'B' as const },
+        { tA: 'Juara Grup E', tB: 'Runner-up Grup F', nextId: qfIds[1], slot: 'A' as const },
+        { tA: 'Juara Grup G', tB: 'Runner-up Grup H', nextId: qfIds[1], slot: 'B' as const },
+        { tA: 'Juara Grup B', tB: 'Runner-up Grup A', nextId: qfIds[2], slot: 'A' as const },
+        { tA: 'Juara Grup D', tB: 'Runner-up Grup C', nextId: qfIds[2], slot: 'B' as const },
+        { tA: 'Juara Grup F', tB: 'Runner-up Grup E', nextId: qfIds[3], slot: 'A' as const },
+        { tA: 'Juara Grup H', tB: 'Runner-up Grup G', nextId: qfIds[3], slot: 'B' as const },
+      ];
+
+      r16Pairings.forEach((pair, idx) => {
+        generatedKnockout.push({
+          id: r16Ids[idx],
+          matchNumber: counter++,
+          category,
+          round: `Babak 16 Besar - Match ${idx + 1}`,
+          roundIndex: 2,
+          teamA: { name: pair.tA, institution: 'Menunggu Hasil Grup' },
+          teamB: { name: pair.tB, institution: 'Menunggu Hasil Grup' },
+          date: '2026-10-27',
+          time: kickoffTimes[idx % kickoffTimes.length],
+          pitch: pitches[idx % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: pair.nextId,
+          nextMatchSlot: pair.slot,
+        });
+      });
+
+      // 4 Perempat Final (8 Besar)
+      for (let i = 0; i < 4; i++) {
+        const assignedNextId = i < 2 ? sf1Id : sf2Id;
+        const assignedNextSlot: 'A' | 'B' = i % 2 === 0 ? 'A' : 'B';
+        generatedKnockout.push({
+          id: qfIds[i],
+          matchNumber: counter++,
+          category,
+          round: `Perempat Final ${i + 1} (8 Besar)`,
+          roundIndex: 3,
+          teamA: { name: `Pemenang 16 Besar Match ${i * 2 + 1}`, institution: 'TBD' },
+          teamB: { name: `Pemenang 16 Besar Match ${i * 2 + 2}`, institution: 'TBD' },
+          date: '2026-10-29',
+          time: kickoffTimes[i % kickoffTimes.length],
+          pitch: pitches[i % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: assignedNextId,
+          nextMatchSlot: assignedNextSlot,
+        });
+      }
+
+      // 2 Semifinal
+      generatedKnockout.push({
+        id: sf1Id,
+        matchNumber: counter++,
+        category,
+        round: 'Semifinal 1',
+        roundIndex: 4,
+        teamA: { name: 'Pemenang Perempat Final 1', institution: 'TBD' },
+        teamB: { name: 'Pemenang Perempat Final 2', institution: 'TBD' },
+        date: '2026-10-30',
+        time: '15:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+        nextMatchId: grandFinalId,
+        nextMatchSlot: 'A',
+      });
+
+      generatedKnockout.push({
+        id: sf2Id,
+        matchNumber: counter++,
+        category,
+        round: 'Semifinal 2',
+        roundIndex: 4,
+        teamA: { name: 'Pemenang Perempat Final 3', institution: 'TBD' },
+        teamB: { name: 'Pemenang Perempat Final 4', institution: 'TBD' },
+        date: '2026-10-30',
+        time: '16:30',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+        nextMatchId: grandFinalId,
+        nextMatchSlot: 'B',
+      });
+
+      // Perebutan Juara 3 & Grand Final
+      generatedKnockout.push({
+        id: thirdPlaceId,
+        matchNumber: counter++,
+        category,
+        round: 'Perebutan Juara 3',
+        roundIndex: 5,
+        teamA: { name: 'Kalah Semifinal 1', institution: 'TBD' },
+        teamB: { name: 'Kalah Semifinal 2', institution: 'TBD' },
+        date: '2026-10-31',
+        time: '16:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
+
+      generatedKnockout.push({
+        id: grandFinalId,
+        matchNumber: counter++,
+        category,
+        round: 'GRAND FINAL WABUP CUP 2026',
+        roundIndex: 6,
+        teamA: { name: 'Pemenang Semifinal 1', institution: 'TBD' },
+        teamB: { name: 'Pemenang Semifinal 2', institution: 'TBD' },
+        date: '2026-10-31',
+        time: '19:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
+    }
+
+    return generatedKnockout;
+  };
+
   const generateMatchesFromGroups = (category: TournamentCategory): { success: boolean; message: string; matches?: MatchItem[] } => {
     const catGroups = groups.filter(g => g.category === category);
     if (catGroups.length === 0) {
@@ -2149,119 +2412,50 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           matchDateObj.setDate(matchDateObj.getDate() + dateOffset);
           const matchDateStr = matchDateObj.toISOString().split('T')[0];
 
-          generatedMatches.push({
-            id: `match-${category.toLowerCase()}-grp-${grp.groupName.replace(/\s+/g, '').toLowerCase()}-${i}-${j}-${Date.now()}`,
-            matchNumber: matchCounter++,
-            category,
-            round: `Fase Grup - ${grp.groupName}`,
-            roundIndex: 1,
-            group: grp.groupName,
-            teamA: { name: tA.name, institution: tA.institution, logo: tA.logo },
-            teamB: { name: tB.name, institution: tB.institution, logo: tB.logo },
-            date: matchDateStr,
-            time: timeSlot,
-            pitch,
-            status: 'UPCOMING',
-          });
+          // Preserve existing match if already exists with scores/events
+          const existing = matches.find(m =>
+            m.category === category &&
+            m.group === grp.groupName &&
+            ((m.teamA.name === tA.name && m.teamB.name === tB.name) ||
+             (m.teamA.name === tB.name && m.teamB.name === tA.name))
+          );
+
+          if (existing) {
+            generatedMatches.push({
+              ...existing,
+              matchNumber: matchCounter++,
+            });
+          } else {
+            generatedMatches.push({
+              id: `match-${category.toLowerCase()}-grp-${grp.groupName.replace(/\s+/g, '').toLowerCase()}-${i}-${j}-${Date.now()}`,
+              matchNumber: matchCounter++,
+              category,
+              round: `Fase Grup - ${grp.groupName}`,
+              roundIndex: 1,
+              group: grp.groupName,
+              teamA: { name: tA.name, institution: tA.institution, logo: tA.logo },
+              teamB: { name: tB.name, institution: tB.institution, logo: tB.logo },
+              date: matchDateStr,
+              time: timeSlot,
+              pitch,
+              status: 'UPCOMING',
+            });
+          }
         }
       }
     });
 
-    const grandFinalId = `match-${category.toLowerCase()}-final-${Date.now()}`;
-    const thirdPlaceId = `match-${category.toLowerCase()}-3rd-${Date.now()}`;
     const numGroups = catGroups.length;
-
-    if (numGroups === 2) {
-      generatedMatches.push({
-        id: thirdPlaceId,
-        matchNumber: matchCounter++,
-        category,
-        round: 'Perebutan Juara 3',
-        roundIndex: 4,
-        teamA: { name: 'Runner-up Grup A', institution: 'Menunggu Hasil Grup' },
-        teamB: { name: 'Runner-up Grup B', institution: 'Menunggu Hasil Grup' },
-        date: '2026-10-31',
-        time: '16:00',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-      });
-      generatedMatches.push({
-        id: grandFinalId,
-        matchNumber: matchCounter++,
-        category,
-        round: 'GRAND FINAL WABUP CUP 2026',
-        roundIndex: 5,
-        teamA: { name: 'Juara Grup A', institution: 'Menunggu Hasil Grup' },
-        teamB: { name: 'Juara Grup B', institution: 'Menunggu Hasil Grup' },
-        date: '2026-10-31',
-        time: '19:00',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-      });
-    } else if (numGroups >= 3 && numGroups <= 4) {
-      const sf1Id = `match-${category.toLowerCase()}-sf1-${Date.now()}`;
-      const sf2Id = `match-${category.toLowerCase()}-sf2-${Date.now()}`;
-
-      generatedMatches.push({
-        id: sf1Id,
-        matchNumber: matchCounter++,
-        category,
-        round: 'Semifinal 1',
-        roundIndex: 3,
-        teamA: { name: 'Juara Grup A', institution: 'Menunggu Hasil Grup' },
-        teamB: { name: 'Juara Grup B', institution: 'Menunggu Hasil Grup' },
-        date: '2026-10-30',
-        time: '15:00',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-        nextMatchId: grandFinalId,
-        nextMatchSlot: 'A',
-      });
-
-      generatedMatches.push({
-        id: sf2Id,
-        matchNumber: matchCounter++,
-        category,
-        round: 'Semifinal 2',
-        roundIndex: 3,
-        teamA: { name: 'Juara Grup C', institution: 'Menunggu Hasil Grup' },
-        teamB: { name: numGroups >= 4 ? 'Juara Grup D' : 'Runner-up Terbaik', institution: 'Menunggu Hasil Grup' },
-        date: '2026-10-30',
-        time: '16:30',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-        nextMatchId: grandFinalId,
-        nextMatchSlot: 'B',
-      });
-
-      generatedMatches.push({
-        id: thirdPlaceId,
-        matchNumber: matchCounter++,
-        category,
-        round: 'Perebutan Juara 3',
-        roundIndex: 4,
-        teamA: { name: 'Kalah Semifinal 1', institution: 'TBD' },
-        teamB: { name: 'Kalah Semifinal 2', institution: 'TBD' },
-        date: '2026-10-31',
-        time: '16:00',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-      });
-
-      generatedMatches.push({
-        id: grandFinalId,
-        matchNumber: matchCounter++,
-        category,
-        round: 'GRAND FINAL WABUP CUP 2026',
-        roundIndex: 5,
-        teamA: { name: 'Pemenang Semifinal 1', institution: 'TBD' },
-        teamB: { name: 'Pemenang Semifinal 2', institution: 'TBD' },
-        date: '2026-10-31',
-        time: '19:00',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-      });
-    }
+    const knockoutMatches = generateKnockoutMatches(
+      category,
+      numGroups,
+      matchCounter,
+      baseDate,
+      defaultVenue,
+      kickoffTimes,
+      pitches
+    );
+    generatedMatches.push(...knockoutMatches);
 
     setMatches(prev => {
       const filtered = prev.filter(m => m.category !== category);
@@ -2276,6 +2470,166 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       success: true,
       message: `Jadwal pertandingan fase grup & bagan knockout berhasil dibuat ulang dari susunan grup saat ini (${generatedMatches.length} pertandingan).`,
       matches: generatedMatches,
+    };
+  };
+
+  const syncKnockoutFromStandings = async (
+    category: TournamentCategory
+  ): Promise<{ success: boolean; message: string; updatedCount?: number }> => {
+    const catGroups = groups.filter(g => g.category === category);
+    if (catGroups.length === 0) {
+      return { success: false, message: `Belum ada susunan grup yang dibentuk untuk kategori ${category}.` };
+    }
+
+    const catMatches = matches.filter(m => m.category === category);
+    const isKnockout = (m: MatchItem) =>
+      !m.group ||
+      m.round.toLowerCase().includes('final') ||
+      m.round.toLowerCase().includes('16 besar') ||
+      m.round.toLowerCase().includes('perempat') ||
+      m.round.toLowerCase().includes('gugur');
+
+    let currentKnockout = catMatches.filter(isKnockout);
+    let needsFullReplace = false;
+
+    if (currentKnockout.length === 0) {
+      const maxMatchNum = catMatches.reduce((max, m) => Math.max(max, m.matchNumber || 0), 0);
+      const kickoffTimes = ['08:00', '09:15', '10:30', '13:30', '14:45', '16:00', '19:00', '20:15'];
+      const defaultVenue = config.venueName || 'Gedung Utama GOR Tawang Alun Banyuwangi';
+      const pitches = [
+        defaultVenue,
+        `${defaultVenue} - Lapangan A`,
+        `${defaultVenue} - Lapangan B`,
+      ];
+      currentKnockout = generateKnockoutMatches(
+        category,
+        catGroups.length,
+        maxMatchNum + 1,
+        config.tournamentStartDate || '2026-10-24',
+        defaultVenue,
+        kickoffTimes,
+        pitches
+      );
+      needsFullReplace = true;
+    }
+
+    const computedStandings = computeStandingsFromData(matches, groups, registrations, category);
+    let updatedCount = 0;
+    const modifiedKnockoutList: MatchItem[] = [];
+
+    const updatedKnockout = currentKnockout.map(m => {
+      let changed = false;
+      const newA = { ...m.teamA };
+      const newB = { ...m.teamB };
+
+      const isGroupReady = (letter: string) => {
+        const gKey = `${category}:::Grup ${letter}`;
+        return Boolean(computedStandings[gKey] && computedStandings[gKey].length > 0);
+      };
+
+      // 1. Juara / Pemenang Grup
+      const winA = m.teamA.name.match(/(?:Juara|Pemenang)\s+Grup\s+([A-Za-z])/i);
+      if (winA && isGroupReady(winA[1].toUpperCase())) {
+        const grpStanding = computedStandings[`${category}:::Grup ${winA[1].toUpperCase()}`];
+        if (grpStanding && grpStanding[0] && newA.name !== grpStanding[0].teamName) {
+          newA.name = grpStanding[0].teamName;
+          newA.institution = grpStanding[0].institution || newA.institution;
+          newA.logo = grpStanding[0].teamLogo || newA.logo;
+          changed = true;
+        }
+      }
+
+      const winB = m.teamB.name.match(/(?:Juara|Pemenang)\s+Grup\s+([A-Za-z])/i);
+      if (winB && isGroupReady(winB[1].toUpperCase())) {
+        const grpStanding = computedStandings[`${category}:::Grup ${winB[1].toUpperCase()}`];
+        if (grpStanding && grpStanding[0] && newB.name !== grpStanding[0].teamName) {
+          newB.name = grpStanding[0].teamName;
+          newB.institution = grpStanding[0].institution || newB.institution;
+          newB.logo = grpStanding[0].teamLogo || newB.logo;
+          changed = true;
+        }
+      }
+
+      // 2. Runner-up / Peringkat 2 Grup
+      const runA = m.teamA.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Grup\s+([A-Za-z])/i);
+      if (runA && isGroupReady(runA[1].toUpperCase())) {
+        const grpStanding = computedStandings[`${category}:::Grup ${runA[1].toUpperCase()}`];
+        if (grpStanding && grpStanding[1] && newA.name !== grpStanding[1].teamName) {
+          newA.name = grpStanding[1].teamName;
+          newA.institution = grpStanding[1].institution || newA.institution;
+          newA.logo = grpStanding[1].teamLogo || newA.logo;
+          changed = true;
+        }
+      }
+
+      const runB = m.teamB.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Grup\s+([A-Za-z])/i);
+      if (runB && isGroupReady(runB[1].toUpperCase())) {
+        const grpStanding = computedStandings[`${category}:::Grup ${runB[1].toUpperCase()}`];
+        if (grpStanding && grpStanding[1] && newB.name !== grpStanding[1].teamName) {
+          newB.name = grpStanding[1].teamName;
+          newB.institution = grpStanding[1].institution || newB.institution;
+          newB.logo = grpStanding[1].teamLogo || newB.logo;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        updatedCount++;
+        const mod = { ...m, teamA: newA, teamB: newB };
+        modifiedKnockoutList.push(mod);
+        return mod;
+      }
+      return m;
+    });
+
+    // Advance winners for finished knockout matches (e.g. 16 Besar finished -> moves to QF)
+    const finalizedKnockout = updatedKnockout.map(m => {
+      if (m.status === 'FINISHED' && (m.winnerId === 'A' || m.winnerId === 'B') && m.nextMatchId) {
+        const winningTeam = m.winnerId === 'A' ? m.teamA : m.teamB;
+        const targetNextIdx = updatedKnockout.findIndex(nextM => nextM.id === m.nextMatchId);
+        if (targetNextIdx >= 0) {
+          const target = updatedKnockout[targetNextIdx];
+          const isSlotB = m.nextMatchSlot === 'B';
+          const curTargetName = isSlotB ? target.teamB.name : target.teamA.name;
+          if (curTargetName !== winningTeam.name) {
+            const updatedTarget = isSlotB
+              ? { ...target, teamB: { ...target.teamB, name: winningTeam.name, institution: winningTeam.institution, logo: winningTeam.logo } }
+              : { ...target, teamA: { ...target.teamA, name: winningTeam.name, institution: winningTeam.institution, logo: winningTeam.logo } };
+            updatedKnockout[targetNextIdx] = updatedTarget;
+            if (!modifiedKnockoutList.some(item => item.id === updatedTarget.id)) {
+              modifiedKnockoutList.push(updatedTarget);
+            }
+            updatedCount++;
+          }
+        }
+      }
+      return m;
+    });
+
+    const groupMatches = catMatches.filter(m => !isKnockout(m));
+    const allCombined = [...groupMatches, ...finalizedKnockout];
+
+    setMatches(prev => {
+      const other = prev.filter(m => m.category !== category);
+      const combined = [...other, ...allCombined];
+      safeLocalStorageSet('wabupcup_matches', JSON.stringify(combined));
+      return combined;
+    });
+
+    try {
+      if (needsFullReplace) {
+        await ApiService.replaceCategoryMatches(category, allCombined);
+      } else if (modifiedKnockoutList.length > 0) {
+        await ApiService.saveMatchesBatch(modifiedKnockoutList);
+      }
+    } catch (err) {
+      console.warn('Could not sync knockout matches to backend:', err);
+    }
+
+    return {
+      success: true,
+      message: `Bagan knockout kategori ${category} berhasil disinkronkan (${finalizedKnockout.length} match knockout, ${updatedCount} slot tim terisi/diperbarui dari klasemen).`,
+      updatedCount,
     };
   };
 
@@ -2379,100 +2733,16 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     });
 
-    const grandFinalId = `match-${category.toLowerCase()}-final-${Date.now()}`;
-    const thirdPlaceId = `match-${category.toLowerCase()}-3rd-${Date.now()}`;
-
-    if (numGroups === 2) {
-      generatedMatches.push({
-        id: thirdPlaceId,
-        matchNumber: matchCounter++,
-        category,
-        round: 'Perebutan Juara 3',
-        roundIndex: 4,
-        teamA: { name: 'Runner-up Grup A', institution: 'Menunggu Hasil Grup' },
-        teamB: { name: 'Runner-up Grup B', institution: 'Menunggu Hasil Grup' },
-        date: '2026-10-31',
-        time: '16:00',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-      });
-      generatedMatches.push({
-        id: grandFinalId,
-        matchNumber: matchCounter++,
-        category,
-        round: 'GRAND FINAL WABUP CUP 2026',
-        roundIndex: 5,
-        teamA: { name: 'Juara Grup A', institution: 'Menunggu Hasil Grup' },
-        teamB: { name: 'Juara Grup B', institution: 'Menunggu Hasil Grup' },
-        date: '2026-10-31',
-        time: '19:00',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-      });
-    } else if (numGroups >= 3 && numGroups <= 4) {
-      const sf1Id = `match-${category.toLowerCase()}-sf1-${Date.now()}`;
-      const sf2Id = `match-${category.toLowerCase()}-sf2-${Date.now()}`;
-
-      generatedMatches.push({
-        id: sf1Id,
-        matchNumber: matchCounter++,
-        category,
-        round: 'Semifinal 1',
-        roundIndex: 3,
-        teamA: { name: 'Juara Grup A', institution: 'Menunggu Hasil Grup' },
-        teamB: { name: 'Juara Grup B', institution: 'Menunggu Hasil Grup' },
-        date: '2026-10-30',
-        time: '15:00',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-        nextMatchId: grandFinalId,
-        nextMatchSlot: 'A',
-      });
-
-      generatedMatches.push({
-        id: sf2Id,
-        matchNumber: matchCounter++,
-        category,
-        round: 'Semifinal 2',
-        roundIndex: 3,
-        teamA: { name: 'Juara Grup C', institution: 'Menunggu Hasil Grup' },
-        teamB: { name: numGroups >= 4 ? 'Juara Grup D' : 'Runner-up Terbaik', institution: 'Menunggu Hasil Grup' },
-        date: '2026-10-30',
-        time: '16:30',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-        nextMatchId: grandFinalId,
-        nextMatchSlot: 'B',
-      });
-
-      generatedMatches.push({
-        id: thirdPlaceId,
-        matchNumber: matchCounter++,
-        category,
-        round: 'Perebutan Juara 3',
-        roundIndex: 4,
-        teamA: { name: 'Kalah Semifinal 1', institution: 'TBD' },
-        teamB: { name: 'Kalah Semifinal 2', institution: 'TBD' },
-        date: '2026-10-31',
-        time: '16:00',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-      });
-
-      generatedMatches.push({
-        id: grandFinalId,
-        matchNumber: matchCounter++,
-        category,
-        round: 'GRAND FINAL WABUP CUP 2026',
-        roundIndex: 5,
-        teamA: { name: 'Pemenang Semifinal 1', institution: 'TBD' },
-        teamB: { name: 'Pemenang Semifinal 2', institution: 'TBD' },
-        date: '2026-10-31',
-        time: '19:00',
-        pitch: defaultVenue,
-        status: 'UPCOMING',
-      });
-    }
+    const knockoutMatches = generateKnockoutMatches(
+      category,
+      numGroups,
+      matchCounter,
+      baseDate,
+      defaultVenue,
+      kickoffTimes,
+      pitches
+    );
+    generatedMatches.push(...knockoutMatches);
 
     setMatches(prev => {
       const filtered = prev.filter(m => m.category !== category);
@@ -2675,7 +2945,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       winnerId: determinedWinner,
     };
 
-    const newMatches = matches.map(m => (m.id === matchId ? updatedMatch : m));
+    let newMatches = matches.map(m => (m.id === matchId ? updatedMatch : m));
     setMatches(newMatches);
     safeLocalStorageSet('wabupcup_matches', JSON.stringify(newMatches));
 
@@ -2732,50 +3002,117 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       console.warn('Could not sync match live score to server:', err);
     }
 
+    // Advance winner to next round if FINISHED and nextMatchId is set
+    if (finalStatus === 'FINISHED' && (determinedWinner === 'A' || determinedWinner === 'B') && updatedMatch.nextMatchId) {
+      const winningTeam = determinedWinner === 'A' ? updatedMatch.teamA : updatedMatch.teamB;
+      const targetNext = newMatches.find(m => m.id === updatedMatch.nextMatchId);
+      if (targetNext) {
+        const isSlotB = updatedMatch.nextMatchSlot === 'B';
+        const updatedNext = isSlotB
+          ? {
+              ...targetNext,
+              teamB: {
+                ...targetNext.teamB,
+                name: winningTeam.name,
+                institution: winningTeam.institution,
+                logo: winningTeam.logo,
+              },
+            }
+          : {
+              ...targetNext,
+              teamA: {
+                ...targetNext.teamA,
+                name: winningTeam.name,
+                institution: winningTeam.institution,
+                logo: winningTeam.logo,
+              },
+            };
+        newMatches = newMatches.map(m => (m.id === targetNext.id ? updatedNext : m));
+        ApiService.saveMatch(updatedNext).catch(() => {});
+      }
+    }
+
     const cat = updatedMatch.category;
     const catGroupMatches = newMatches.filter(m => m.category === cat && !!m.group);
     const allGroupFinished = catGroupMatches.length > 0 && catGroupMatches.every(m => m.status === 'FINISHED');
-    if (allGroupFinished) {
-      const computedStandings = computeStandingsFromData(newMatches, groups, registrations, cat);
-      const updatedWithKnockoutWinners = newMatches.map(m => {
-        if (m.category === cat && !m.group) {
-          let changed = false;
-          const newA = { ...m.teamA };
-          const newB = { ...m.teamB };
+    const computedStandings = computeStandingsFromData(newMatches, groups, registrations, cat);
 
-          const matchWinnerA = m.teamA.name.match(/Juara\s+Grup\s+([A-Za-z])/i);
-          if (matchWinnerA) {
-            const grpLetter = matchWinnerA[1].toUpperCase();
-            const grpStanding = computedStandings[`${cat}:::Grup ${grpLetter}`];
-            if (grpStanding && grpStanding[0]) {
-              newA.name = grpStanding[0].teamName;
-              newA.institution = grpStanding[0].institution;
-              newA.logo = grpStanding[0].teamLogo;
-              changed = true;
-            }
-          }
-          const matchWinnerB = m.teamB.name.match(/Juara\s+Grup\s+([A-Za-z])/i);
-          if (matchWinnerB) {
-            const grpLetter = matchWinnerB[1].toUpperCase();
-            const grpStanding = computedStandings[`${cat}:::Grup ${grpLetter}`];
-            if (grpStanding && grpStanding[0]) {
-              newB.name = grpStanding[0].teamName;
-              newB.institution = grpStanding[0].institution;
-              newB.logo = grpStanding[0].teamLogo;
-              changed = true;
-            }
-          }
+    const isGroupReady = (letter: string) => {
+      const gMatches = newMatches.filter(
+        m => m.category === cat && m.group?.toLowerCase() === `grup ${letter}`.toLowerCase()
+      );
+      return (gMatches.length > 0 && gMatches.every(m => m.status === 'FINISHED')) || allGroupFinished;
+    };
 
-          if (changed) {
-            const mod = { ...m, teamA: newA, teamB: newB };
-            ApiService.saveMatch(mod).catch(() => {});
-            return mod;
+    const modifiedKnockouts: MatchItem[] = [];
+    const updatedWithKnockoutWinners = newMatches.map(m => {
+      if (m.category === cat && !m.group) {
+        let changed = false;
+        const newA = { ...m.teamA };
+        const newB = { ...m.teamB };
+
+        // 1. Juara / Pemenang Grup A-H
+        const matchWinnerA = m.teamA.name.match(/(?:Juara|Pemenang)\s+Grup\s+([A-Za-z])/i);
+        if (matchWinnerA && isGroupReady(matchWinnerA[1].toUpperCase())) {
+          const grpLetter = matchWinnerA[1].toUpperCase();
+          const grpStanding = computedStandings[`${cat}:::Grup ${grpLetter}`];
+          if (grpStanding && grpStanding[0] && newA.name !== grpStanding[0].teamName) {
+            newA.name = grpStanding[0].teamName;
+            newA.institution = grpStanding[0].institution || newA.institution;
+            newA.logo = grpStanding[0].teamLogo || newA.logo;
+            changed = true;
           }
         }
-        return m;
-      });
+        const matchWinnerB = m.teamB.name.match(/(?:Juara|Pemenang)\s+Grup\s+([A-Za-z])/i);
+        if (matchWinnerB && isGroupReady(matchWinnerB[1].toUpperCase())) {
+          const grpLetter = matchWinnerB[1].toUpperCase();
+          const grpStanding = computedStandings[`${cat}:::Grup ${grpLetter}`];
+          if (grpStanding && grpStanding[0] && newB.name !== grpStanding[0].teamName) {
+            newB.name = grpStanding[0].teamName;
+            newB.institution = grpStanding[0].institution || newB.institution;
+            newB.logo = grpStanding[0].teamLogo || newB.logo;
+            changed = true;
+          }
+        }
+
+        // 2. Runner-up / Peringkat 2 Grup A-H
+        const matchRunnerA = m.teamA.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Grup\s+([A-Za-z])/i);
+        if (matchRunnerA && isGroupReady(matchRunnerA[1].toUpperCase())) {
+          const grpLetter = matchRunnerA[1].toUpperCase();
+          const grpStanding = computedStandings[`${cat}:::Grup ${grpLetter}`];
+          if (grpStanding && grpStanding[1] && newA.name !== grpStanding[1].teamName) {
+            newA.name = grpStanding[1].teamName;
+            newA.institution = grpStanding[1].institution || newA.institution;
+            newA.logo = grpStanding[1].teamLogo || newA.logo;
+            changed = true;
+          }
+        }
+        const matchRunnerB = m.teamB.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Grup\s+([A-Za-z])/i);
+        if (matchRunnerB && isGroupReady(matchRunnerB[1].toUpperCase())) {
+          const grpLetter = matchRunnerB[1].toUpperCase();
+          const grpStanding = computedStandings[`${cat}:::Grup ${grpLetter}`];
+          if (grpStanding && grpStanding[1] && newB.name !== grpStanding[1].teamName) {
+            newB.name = grpStanding[1].teamName;
+            newB.institution = grpStanding[1].institution || newB.institution;
+            newB.logo = grpStanding[1].teamLogo || newB.logo;
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          const mod = { ...m, teamA: newA, teamB: newB };
+          modifiedKnockouts.push(mod);
+          return mod;
+        }
+      }
+      return m;
+    });
+
+    if (modifiedKnockouts.length > 0) {
       setMatches(updatedWithKnockoutWinners);
       safeLocalStorageSet('wabupcup_matches', JSON.stringify(updatedWithKnockoutWinners));
+      // Save in a single batch request to minimize RU & FOT
+      ApiService.saveMatchesBatch(modifiedKnockouts).catch(() => {});
     }
   };
 
@@ -3045,6 +3382,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         addGroup,
         deleteGroup,
         resetCategoryGroupsAndMatches,
+        syncKnockoutFromStandings,
         players,
         refreshPlayers,
         savePlayer,

@@ -17,6 +17,7 @@ import {
   Settings,
   Users,
   MapPin,
+  Trophy,
 } from 'lucide-react';
 
 export const GroupStageDragDropManager: React.FC = () => {
@@ -34,6 +35,7 @@ export const GroupStageDragDropManager: React.FC = () => {
     config,
     updateConfig,
     resetCategoryGroupsAndMatches,
+    syncKnockoutFromStandings,
   } = useTournament();
 
   const [selectedCat, setSelectedCat] = useState<TournamentCategory>(() => categories[0]?.id || 'SMA');
@@ -109,6 +111,24 @@ export const GroupStageDragDropManager: React.FC = () => {
         type: res.success ? 'success' : 'error',
       });
     }, 300);
+  };
+
+  const handleSyncKnockout = async () => {
+    setIsProcessing(true);
+    try {
+      const res = await syncKnockoutFromStandings(selectedCat);
+      setMessage({
+        text: res.message,
+        type: res.success ? 'success' : 'error',
+      });
+    } catch (err: any) {
+      setMessage({
+        text: `Gagal menyinkronkan bagan knockout: ${err?.message || 'Terjadi kesalahan sistem'}`,
+        type: 'error',
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleConfirmReset = async () => {
@@ -352,6 +372,20 @@ export const GroupStageDragDropManager: React.FC = () => {
             >
               <Calendar className="w-4 h-4 text-emerald-400" />
               <span>Perbarui Jadwal & Knockout</span>
+            </button>
+          )}
+
+          {/* Tombol Sinkronkan Bagan 16 Besar / Knockout dari Klasemen */}
+          {currentCategoryGroups.length > 0 && (
+            <button
+              type="button"
+              onClick={handleSyncKnockout}
+              disabled={isProcessing}
+              className="px-4 py-2.5 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 hover:text-white text-xs font-bold border border-indigo-700/80 transition flex items-center space-x-2 cursor-pointer shadow-sm"
+              title="Cek klasemen terkini dan masukkan tim peringkat 1 & 2 ke jadwal Babak 16 Besar s/d Final"
+            >
+              <Trophy className="w-4 h-4 text-amber-400" />
+              <span>⚡ Sinkronkan 16 Besar & Knockout</span>
             </button>
           )}
 

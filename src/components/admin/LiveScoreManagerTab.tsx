@@ -43,9 +43,25 @@ export const LiveScoreManagerTab: React.FC = () => {
     currentAdmin,
     refreshDataFromServer,
     isSyncingWithServer,
+    syncKnockoutFromStandings,
   } = useTournament();
 
   const [isRefreshingMatches, setIsRefreshingMatches] = useState(false);
+  const [isSyncingKnockout, setIsSyncingKnockout] = useState(false);
+
+  const handleQuickSyncKnockout = async () => {
+    const targetCat = selectedCat === 'ALL' ? (categories[0]?.id || 'SMA') : (selectedCat as TournamentCategory);
+    setIsSyncingKnockout(true);
+    try {
+      const res = await syncKnockoutFromStandings(targetCat);
+      setSuccessMsg(res.message);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      alert(`Gagal menyinkronkan bagan knockout: ${err?.message || 'Terjadi kesalahan sistem'}`);
+    } finally {
+      setIsSyncingKnockout(false);
+    }
+  };
 
   const handleRefreshMatches = async () => {
     try {
@@ -672,6 +688,20 @@ export const LiveScoreManagerTab: React.FC = () => {
               >
                 <Plus className="w-4 h-4" />
                 <span>Tambah Jadwal Baru</span>
+              </button>
+            )}
+
+            {/* Tombol Cepat Sinkronkan Tim Lolos Knockout */}
+            {canFullManageSchedule && (
+              <button
+                type="button"
+                onClick={handleQuickSyncKnockout}
+                disabled={isSyncingKnockout}
+                className="px-3.5 py-2.5 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 hover:text-white text-xs font-bold border border-indigo-700/80 transition flex items-center space-x-1.5 cursor-pointer shadow-md shadow-indigo-950/40 shrink-0"
+                title={`Sinkronkan tim lolos dari klasemen ke bagan knockout untuk kategori ${selectedCat === 'ALL' ? 'utama' : selectedCat}`}
+              >
+                <Trophy className={`w-4 h-4 text-amber-400 ${isSyncingKnockout ? 'animate-bounce' : ''}`} />
+                <span>{isSyncingKnockout ? 'Menyinkronkan...' : '⚡ Sinkronkan Knockout'}</span>
               </button>
             )}
           </div>
