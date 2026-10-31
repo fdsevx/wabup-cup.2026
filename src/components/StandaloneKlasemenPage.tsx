@@ -650,8 +650,8 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
       },
       R32: {
         id: 'R32',
-        title: 'Babak 32 Besar',
-        shortTitle: '32 Besar',
+        title: selectedCat === 'SMP' ? 'Babak 34 Besar' : 'Babak 32 Besar',
+        shortTitle: selectedCat === 'SMP' ? '34 Besar' : '32 Besar',
         icon: '🔥',
         order: 2,
         badgeBg: 'bg-blue-500/10',
@@ -712,7 +712,7 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
     const getStageKey = (m: MatchItem): string => {
       const r = (m.round || '').toLowerCase();
       if (r.includes('play-off') || r.includes('playoff') || r.includes('22 besar')) return 'PLAYOFF';
-      if (r.includes('32 besar') || r.includes('round of 32')) return 'R32';
+      if (r.includes('34 besar') || r.includes('32 besar') || r.includes('round of 32')) return 'R32';
       if (r.includes('16 besar') || r.includes('round of 16')) return 'R16';
       if (r.includes('perempat') || r.includes('8 besar') || r.includes('quarter') || r.includes('qf')) return 'QF';
       if ((r.includes('semifinal') || r.includes('semi-final') || r.includes('semi final')) && !r.includes('perempat')) return 'SF';
@@ -752,13 +752,26 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
           if (a.time && b.time && a.time !== b.time) return a.time.localeCompare(b.time);
           return 0;
         });
+
+        let title = stageDefs[key].title;
+        let shortTitle = stageDefs[key].shortTitle;
+        if (key === 'R32') {
+          const has34 = list.some(m => (m.round || '').toLowerCase().includes('34 besar'));
+          if (has34 || selectedCat === 'SMP') {
+            title = 'Babak 34 Besar';
+            shortTitle = '34 Besar';
+          }
+        }
+
         return {
           ...stageDefs[key],
+          title,
+          shortTitle,
           matches: sorted,
         };
       })
       .sort((a, b) => a.order - b.order);
-  }, [knockoutMatches]);
+  }, [knockoutMatches, selectedCat]);
 
   const activeSelectedStage = useMemo(() => {
     if (selectedKnockoutStage === 'ALL') return null;

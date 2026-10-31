@@ -2552,11 +2552,14 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           tBName = `Runner-up Grup ${groupLetters[(i + 1) % groupLetters.length]}`;
         }
 
+        const isSmp = category === 'SMP' || numGroups >= 17;
+        const roundPrefix = isSmp ? 'Babak 34 Besar' : 'Babak 32 Besar';
+
         generatedKnockout.push({
           id: r32Ids[i],
           matchNumber: counter++,
           category,
-          round: `Babak 32 Besar - Match ${i + 1}`,
+          round: `${roundPrefix} - Match ${i + 1}`,
           roundIndex: 1,
           teamA: { name: tAName, institution: 'Menunggu Hasil Grup' },
           teamB: { name: tBName, institution: 'Menunggu Hasil Grup' },
@@ -2570,6 +2573,8 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       // 8 Laga 16 Besar
+      const isSmp = category === 'SMP' || numGroups >= 17;
+      const prevRoundName = isSmp ? '34 Besar' : '32 Besar';
       for (let i = 0; i < 8; i++) {
         const assignedQfId = qfIds[Math.floor(i / 2)];
         const assignedQfSlot: 'A' | 'B' = i % 2 === 0 ? 'A' : 'B';
@@ -2579,8 +2584,8 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           category,
           round: `Babak 16 Besar - Match ${i + 1}`,
           roundIndex: 2,
-          teamA: { name: `Pemenang 32 Besar Match ${i * 2 + 1}`, institution: 'TBD' },
-          teamB: { name: `Pemenang 32 Besar Match ${i * 2 + 2}`, institution: 'TBD' },
+          teamA: { name: `Pemenang ${prevRoundName} Match ${i * 2 + 1}`, institution: 'TBD' },
+          teamB: { name: `Pemenang ${prevRoundName} Match ${i * 2 + 2}`, institution: 'TBD' },
           date: '2026-10-28',
           time: kickoffTimes[i % kickoffTimes.length],
           pitch: pitches[i % pitches.length],
