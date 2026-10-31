@@ -2850,7 +2850,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose, isStand
         </aside>
 
         {/* CMS CONTENT AREA */}
-        <main className="flex-1 h-full min-h-0 bg-slate-100/70 dark:bg-[#0B1120]/80 backdrop-blur-2xl overflow-y-auto p-4 sm:p-6 lg:p-8 flex flex-col space-y-6 transition-colors duration-200">
+        <main id="admin-main-content" className="flex-1 h-full min-h-0 bg-slate-100/70 dark:bg-[#0B1120]/80 backdrop-blur-2xl overflow-y-auto p-4 sm:p-6 lg:p-8 flex flex-col space-y-6 transition-colors duration-200">
           
           {/* MOBILE TABS SELECTOR - RBAC ENFORCED */}
           <div className="md:hidden mb-2">

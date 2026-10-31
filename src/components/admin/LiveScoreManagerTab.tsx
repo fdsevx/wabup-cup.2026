@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useTournament } from '../../context/TournamentContext';
 import { MatchItem, MatchStatus, TournamentCategory, MatchEvent, PlayerItem } from '../../types';
 import {
@@ -128,6 +129,15 @@ export const LiveScoreManagerTab: React.FC = () => {
     date: new Date().toISOString().split('T')[0],
     time: '08:00',
   });
+
+  const scrollAdminToTop = () => {
+    const mainEl = document.getElementById('admin-main-content') || document.querySelector('main');
+    if (mainEl) {
+      mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   // Edit Match Modal (Full Schedule Editing for Admins)
   const [editingMatch, setEditingMatch] = useState<MatchItem | null>(null);
@@ -2033,7 +2043,7 @@ export const LiveScoreManagerTab: React.FC = () => {
                             if (selectedGroup !== 'ALL') {
                               setSelectedGroup('ALL');
                             }
-                            window.scrollTo({ top: 180, behavior: 'smooth' });
+                            scrollAdminToTop();
                           }}
                           className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs transition flex items-center space-x-1.5 cursor-pointer shadow-md shadow-red-950/40 animate-pulse"
                           title="Fokuskan laga yang sedang LIVE ini ke panel operator di atas"
@@ -2072,7 +2082,7 @@ export const LiveScoreManagerTab: React.FC = () => {
                             setFocusedMatchId(m.id);
                             setIsFocusPanelOpen(true);
                             setSelectedStatus('LIVE');
-                            window.scrollTo({ top: 180, behavior: 'smooth' });
+                            scrollAdminToTop();
                           } catch (err: any) {
                             alert(`Gagal memulai LIVE: ${err?.message || 'Error'}`);
                           } finally {
@@ -2107,8 +2117,8 @@ export const LiveScoreManagerTab: React.FC = () => {
       {/* ========================================================================= */}
       {/* 🖥️ STANDALONE OPERATOR LIVE SCORE CONSOLE (FULLSCREEN DEDICATED WORKSPACE) */}
       {/* ========================================================================= */}
-      {isStandaloneMode && (
-        <div className="fixed inset-0 z-[60] bg-[#070b13] text-white overflow-y-auto flex flex-col animate-fadeIn select-none">
+      {isStandaloneMode && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] bg-[#070b13] text-white overflow-y-auto flex flex-col animate-fadeIn select-none">
           {/* Glow background accents */}
           <div className="fixed top-0 left-1/4 w-[600px] h-[300px] bg-red-600/10 blur-[120px] pointer-events-none rounded-full" />
           <div className="fixed bottom-0 right-1/4 w-[600px] h-[300px] bg-amber-500/10 blur-[120px] pointer-events-none rounded-full" />
@@ -2694,14 +2704,15 @@ export const LiveScoreManagerTab: React.FC = () => {
               </div>
             )}
           </main>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================================= */}
       {/* MODAL 1: TAMBAH JADWAL BARU (SUPER ADMIN, PANITIA INTI & PANITIA UMUM)     */}
       {/* ========================================================================= */}
-      {isAddMatchOpen && canFullManageSchedule && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+      {isAddMatchOpen && canFullManageSchedule && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <form
             onSubmit={handleCreateNewMatch}
             className="w-full max-w-lg p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
@@ -2935,14 +2946,15 @@ export const LiveScoreManagerTab: React.FC = () => {
               </button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================================= */}
       {/* MODAL 2: EDIT JADWAL LENGKAP (SUPER ADMIN, PANITIA INTI & PANITIA UMUM)    */}
       {/* ========================================================================= */}
-      {editingMatch && editMatchForm && canFullManageSchedule && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+      {editingMatch && editMatchForm && canFullManageSchedule && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <form
             onSubmit={handleSaveEditMatch}
             className="w-full max-w-lg p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
@@ -3156,14 +3168,15 @@ export const LiveScoreManagerTab: React.FC = () => {
               </button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================================= */}
       {/* MODAL 3: PENCATATAN GOL & PELANGGARAN DENGAN DROPDOWN NAMA PEMAIN OTOMATIS   */}
       {/* ========================================================================= */}
-      {eventModalData && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+      {eventModalData && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="w-full max-w-md p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center space-x-2">
@@ -3363,7 +3376,8 @@ export const LiveScoreManagerTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
