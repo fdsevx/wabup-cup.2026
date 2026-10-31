@@ -2772,7 +2772,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       !m.group ||
       m.round.toLowerCase().includes('final') ||
       m.round.toLowerCase().includes('16 besar') ||
+      m.round.toLowerCase().includes('22 besar') ||
       m.round.toLowerCase().includes('32 besar') ||
+      m.round.toLowerCase().includes('8 besar') ||
       m.round.toLowerCase().includes('play-off') ||
       m.round.toLowerCase().includes('playoff') ||
       m.round.toLowerCase().includes('perempat') ||
@@ -2804,6 +2806,15 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const computedStandings = computeStandingsFromData(matches, groups, registrations, category);
 
+    // Guard: Cek apakah suatu grup sudah menyelesaikan semua pertandingannya
+    const isGroupCompleted = (groupName: string) => {
+      const gMatches = catMatches.filter(
+        m => m.group && m.group.toLowerCase().trim() === groupName.toLowerCase().trim()
+      );
+      return gMatches.length > 0 && gMatches.every(m => m.status === 'FINISHED');
+    };
+    const allGroupsFinished = catGroups.length > 0 && catGroups.every(grp => isGroupCompleted(grp.groupName));
+
     // Mini-standings cross-group rankings for Best Winners and Best Runner-ups
     interface GroupRankedTeam {
       groupName: string;
@@ -2823,10 +2834,13 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const groupRunnerUpMap: Record<string, GroupRankedTeam> = {};
 
     catGroups.forEach(grp => {
+      const isDone = isGroupCompleted(grp.groupName);
       const gLetter = grp.groupName.replace(/grup\s*/i, '').trim().toUpperCase();
       const gKey = `${category}:::${grp.groupName}`;
       const gStandings = computedStandings[gKey];
-      if (gStandings && gStandings.length > 0) {
+
+      // Hanya isi pemenang grup jika pertandingan di grup tersebut telah 100% tuntas
+      if (isDone && gStandings && gStandings.length > 0) {
         if (gStandings[0]) {
           const item: GroupRankedTeam = {
             groupName: grp.groupName,
@@ -2839,8 +2853,10 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             goalsFor: gStandings[0].goalsFor || 0,
             goalsAgainst: gStandings[0].goalsAgainst || 0,
           };
-          allJuara.push(item);
           groupJuaraMap[gLetter] = item;
+          if (allGroupsFinished) {
+            allJuara.push(item);
+          }
         }
         if (gStandings[1]) {
           const item: GroupRankedTeam = {
@@ -2854,8 +2870,10 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             goalsFor: gStandings[1].goalsFor || 0,
             goalsAgainst: gStandings[1].goalsAgainst || 0,
           };
-          allRunnerUp.push(item);
           groupRunnerUpMap[gLetter] = item;
+          if (allGroupsFinished) {
+            allRunnerUp.push(item);
+          }
         }
       }
     });
@@ -2993,9 +3011,14 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       console.warn('Could not sync knockout matches to backend:', err);
     }
 
+    const completedGroupsCount = catGroups.filter(grp => isGroupCompleted(grp.groupName)).length;
+    const progressNote = completedGroupsCount === catGroups.length
+      ? `Semua ${catGroups.length} grup telah tuntas.`
+      : `${completedGroupsCount} dari ${catGroups.length} grup telah tuntas. Grup yang sedang berjalan tetap menunggu hasil akhir.`;
+
     return {
       success: true,
-      message: `Bagan knockout kategori ${category} berhasil disinkronkan (${finalizedKnockout.length} match knockout, ${updatedCount} slot tim terisi/diperbarui dari klasemen).`,
+      message: `Bagan knockout kategori ${category} berhasil disinkronkan (${finalizedKnockout.length} match knockout, ${updatedCount} slot tim terisi/diperbarui. ${progressNote})`,
       updatedCount,
     };
   };
@@ -3506,9 +3529,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         }
 
-        // 3. Juara Terbaik N
+        // 3. Juara Terbaik N (Hanya berlaku bila semua grup dalam kategori sudah selesai)
         const matchBestWinA = m.teamA.name.match(/(?:Juara|Pemenang)\s+Terbaik\s+(\d+)/i);
-        if (matchBestWinA) {
+        if (matchBestWinA && allGroupFinished) {
           const rankIdx = parseInt(matchBestWinA[1], 10) - 1;
           const found = allJuara[rankIdx];
           if (found && newA.name !== found.teamName) {
@@ -3519,7 +3542,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         }
         const matchBestWinB = m.teamB.name.match(/(?:Juara|Pemenang)\s+Terbaik\s+(\d+)/i);
-        if (matchBestWinB) {
+        if (matchBestWinB && allGroupFinished) {
           const rankIdx = parseInt(matchBestWinB[1], 10) - 1;
           const found = allJuara[rankIdx];
           if (found && newB.name !== found.teamName) {
@@ -3530,9 +3553,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         }
 
-        // 4. Runner-up Terbaik N
+        // 4. Runner-up Terbaik N (Hanya berlaku bila semua grup dalam kategori sudah selesai)
         const matchBestRunA = m.teamA.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Terbaik\s+(\d+)/i);
-        if (matchBestRunA) {
+        if (matchBestRunA && allGroupFinished) {
           const rankIdx = parseInt(matchBestRunA[1], 10) - 1;
           const found = allRunnerUp[rankIdx];
           if (found && newA.name !== found.teamName) {
@@ -3543,7 +3566,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           }
         }
         const matchBestRunB = m.teamB.name.match(/(?:Runner-?up|Peringkat\s+2)\s+Terbaik\s+(\d+)/i);
-        if (matchBestRunB) {
+        if (matchBestRunB && allGroupFinished) {
           const rankIdx = parseInt(matchBestRunB[1], 10) - 1;
           const found = allRunnerUp[rankIdx];
           if (found && newB.name !== found.teamName) {
