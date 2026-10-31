@@ -208,6 +208,13 @@ export const LiveScoreManagerTab: React.FC = () => {
     };
   }, [matches, selectedCat]);
 
+  const isKnockoutMatch = (m: MatchItem) =>
+    !m.group ||
+    m.round.toLowerCase().includes('final') ||
+    m.round.toLowerCase().includes('besar') ||
+    m.round.toLowerCase().includes('play') ||
+    m.round.toLowerCase().includes('gugur');
+
   // Group Filter stats for the selected category and status
   const availableGroupStats = useMemo(() => {
     const baseMatches = matches.filter(m => {
@@ -220,11 +227,13 @@ export const LiveScoreManagerTab: React.FC = () => {
     let knockoutCount = 0;
 
     baseMatches.forEach(m => {
-      const g = (m.group || '').trim();
-      if (g) {
-        groupCounts[g] = (groupCounts[g] || 0) + 1;
-      } else {
+      if (isKnockoutMatch(m)) {
         knockoutCount += 1;
+      } else {
+        const g = (m.group || '').trim();
+        if (g) {
+          groupCounts[g] = (groupCounts[g] || 0) + 1;
+        }
       }
     });
 
@@ -242,14 +251,14 @@ export const LiveScoreManagerTab: React.FC = () => {
     };
   }, [matches, selectedCat, selectedStatus]);
 
-  // Filter matches by category, status, group, and search query
+  // Filter matches by category, status, group, and search query (Smart Sorted: LIVE -> Babak Gugur -> Fase Grup)
   const filteredMatches = useMemo(() => {
-    return matches.filter(m => {
+    const list = matches.filter(m => {
       if (selectedCat !== 'ALL' && m.category !== selectedCat) return false;
       if (selectedStatus !== 'ALL' && m.status !== selectedStatus) return false;
       if (selectedGroup !== 'ALL') {
         if (selectedGroup === 'KNOCKOUT') {
-          if (m.group && m.group.trim() !== '') return false;
+          if (!isKnockoutMatch(m)) return false;
         } else {
           if ((m.group || '').trim() !== selectedGroup) return false;
         }
@@ -264,6 +273,41 @@ export const LiveScoreManagerTab: React.FC = () => {
         );
       }
       return true;
+    });
+
+    return list.sort((a, b) => {
+      // 1. LIVE matches first
+      if (a.status === 'LIVE' && b.status !== 'LIVE') return -1;
+      if (b.status === 'LIVE' && a.status !== 'LIVE') return 1;
+
+      // 2. Knockout matches prioritized over Group matches
+      const aIsKo = isKnockoutMatch(a);
+      const bIsKo = isKnockoutMatch(b);
+      if (aIsKo && !bIsKo) return -1;
+      if (!aIsKo && bIsKo) return 1;
+
+      // 3. Within Knockout: Final -> Semifinal -> QF -> 16 Besar -> 32 Besar -> Play-off
+      if (aIsKo && bIsKo) {
+        const getRoundWeight = (r: string) => {
+          const lower = r.toLowerCase();
+          if (lower.includes('grand final')) return 100;
+          if (lower.includes('juara 3')) return 90;
+          if (lower.includes('semifinal')) return 80;
+          if (lower.includes('perempat') || lower.includes('8 besar')) return 70;
+          if (lower.includes('16 besar')) return 60;
+          if (lower.includes('32 besar')) return 50;
+          if (lower.includes('play')) return 40;
+          return 30;
+        };
+        const diffWeight = getRoundWeight(b.round) - getRoundWeight(a.round);
+        if (diffWeight !== 0) return diffWeight;
+      }
+
+      // 4. By Date and Match Number
+      if (a.date && b.date && a.date !== b.date) {
+        return a.date.localeCompare(b.date);
+      }
+      return (a.matchNumber || 0) - (b.matchNumber || 0);
     });
   }, [matches, selectedCat, selectedStatus, selectedGroup, searchQuery]);
 
@@ -952,8 +996,32 @@ export const LiveScoreManagerTab: React.FC = () => {
                   : 'bg-slate-950 text-slate-300 border border-slate-800 hover:bg-slate-800'
               }`}
             >
-              Semua Grup ({availableGroupStats.total})
+              Semua Jadwal ({availableGroupStats.total})
             </button>
+
+            {availableGroupStats.knockoutCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedGroup('KNOCKOUT')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
+                  selectedGroup === 'KNOCKOUT'
+                    ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                    : 'bg-indigo-950/80 text-indigo-200 border border-indigo-700/80 hover:bg-indigo-900'
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                <span>⚡ Babak Gugur</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                    selectedGroup === 'KNOCKOUT'
+                      ? 'bg-black/30 text-slate-950 font-bold'
+                      : 'bg-indigo-900 text-indigo-300'
+                  }`}
+                >
+                  {availableGroupStats.knockoutCount}
+                </span>
+              </button>
+            )}
 
             {availableGroupStats.groups.map(grp => (
               <button
@@ -977,28 +1045,6 @@ export const LiveScoreManagerTab: React.FC = () => {
                 </span>
               </button>
             ))}
-
-            {availableGroupStats.knockoutCount > 0 && (
-              <button
-                onClick={() => setSelectedGroup('KNOCKOUT')}
-                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
-                  selectedGroup === 'KNOCKOUT'
-                    ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
-                    : 'bg-slate-950 text-slate-300 border border-slate-800 hover:bg-slate-800'
-                }`}
-              >
-                <span>Babak Gugur</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                    selectedGroup === 'KNOCKOUT'
-                      ? 'bg-black/30 text-slate-950 font-bold'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}
-                >
-                  {availableGroupStats.knockoutCount}
-                </span>
-              </button>
-            )}
           </div>
         )}
       </div>
