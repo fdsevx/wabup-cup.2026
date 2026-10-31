@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useTournament } from '../context/TournamentContext';
-import { TournamentCategory, TeamStandingItem, MatchItem } from '../types';
+import { TournamentCategory, TeamStandingItem, MatchItem, MatchStatus } from '../types';
 import {
   Trophy,
   Calendar,
@@ -428,17 +428,28 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
     return !isPlaceholderTeam(m.teamA) && !isPlaceholderTeam(m.teamB);
   };
 
-  // Upcoming matches (UPCOMING or LIVE), prioritized by LIVE -> Knockout -> Group
+  // Upcoming matches (UPCOMING or LIVE), prioritized by LIVE -> Knockout -> Group -> Tanggal & Jam
   const upcomingMatches = useMemo(() => {
     const validMatches = catMatches.filter(hasRealTeams);
     const sorted = [...validMatches].sort((a, b) => {
+      // 1. LIVE matches first
       if (a.status === 'LIVE' && b.status !== 'LIVE') return -1;
       if (b.status === 'LIVE' && a.status !== 'LIVE') return 1;
 
+      // 2. Knockout matches prioritized over Group matches
       const aIsKo = isKnockoutMatch(a);
       const bIsKo = isKnockoutMatch(b);
       if (aIsKo && !bIsKo) return -1;
       if (!aIsKo && bIsKo) return 1;
+
+      // 3. Tanggal & Jam
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+      const timeA = a.time || '';
+      const timeB = b.time || '';
+      if (timeA !== timeB) return timeA.localeCompare(timeB);
 
       return (a.matchNumber || 0) - (b.matchNumber || 0);
     });
@@ -449,13 +460,32 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
   const detailedScheduleMatches = useMemo(() => {
     const validMatches = catMatches.filter(hasRealTeams);
     const live = validMatches.filter(m => m.status === 'LIVE');
-    const finished = validMatches.filter(m => m.status === 'FINISHED').reverse();
-    const upcoming = validMatches.filter(m => m.status === 'UPCOMING');
-    const combined = [...live, ...finished, ...upcoming];
+    const upcoming = validMatches.filter(m => m.status === 'UPCOMING').sort((a, b) => {
+      const aIsKo = isKnockoutMatch(a);
+      const bIsKo = isKnockoutMatch(b);
+      if (aIsKo && !bIsKo) return -1;
+      if (!aIsKo && bIsKo) return 1;
+      const dateDiff = (a.date || '').localeCompare(b.date || '');
+      if (dateDiff !== 0) return dateDiff;
+      const timeDiff = (a.time || '').localeCompare(b.time || '');
+      if (timeDiff !== 0) return timeDiff;
+      return (a.matchNumber || 0) - (b.matchNumber || 0);
+    });
+    const finished = validMatches.filter(m => m.status === 'FINISHED').sort((a, b) => {
+      const aIsKo = isKnockoutMatch(a);
+      const bIsKo = isKnockoutMatch(b);
+      if (aIsKo && !bIsKo) return -1;
+      if (!aIsKo && bIsKo) return 1;
+      const dateDiff = (b.date || '').localeCompare(a.date || '');
+      if (dateDiff !== 0) return dateDiff;
+      return (b.matchNumber || 0) - (a.matchNumber || 0);
+    });
+    const combined = [...live, ...upcoming, ...finished];
     return combined.slice(0, 6);
   }, [catMatches]);
 
-  // Filtered matches for Jadwal & Hasil tab (Smart Sorted: LIVE -> Babak Gugur -> Fase Grup)
+  // Filtered matches for Jadwal & Hasil tab
+  // Aturan urut: LIVE terlebih dahulu -> UPCOMING (sesuai tanggal & jam, fase gugur di atas grup) -> FINISHED (fase gugur di atas grup)
   const filteredMatches = useMemo(() => {
     const list = catMatches.filter(m => {
       // Sembunyikan laga jika nama tim belum definitif / masih placeholder
@@ -486,37 +516,39 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
     });
 
     return list.sort((a, b) => {
-      // 1. LIVE matches first
-      if (a.status === 'LIVE' && b.status !== 'LIVE') return -1;
-      if (b.status === 'LIVE' && a.status !== 'LIVE') return 1;
+      // 1. Urutan Status Utama: LIVE (1) -> UPCOMING (2) -> FINISHED (3)
+      const getStatusRank = (st: MatchStatus) => {
+        if (st === 'LIVE') return 1;
+        if (st === 'UPCOMING') return 2;
+        return 3; // FINISHED
+      };
+      const rankA = getStatusRank(a.status);
+      const rankB = getStatusRank(b.status);
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
 
-      // 2. Knockout matches prioritized over Group matches
+      // 2. Dalam status yang sama: Fase Gugur lebih dulu, Fase Grup di bawah
       const aIsKo = isKnockoutMatch(a);
       const bIsKo = isKnockoutMatch(b);
       if (aIsKo && !bIsKo) return -1;
       if (!aIsKo && bIsKo) return 1;
 
-      // 3. Within Knockout: Final -> Semifinal -> QF -> 16 Besar -> 32 Besar -> Play-off
-      if (aIsKo && bIsKo) {
-        const getRoundWeight = (r: string) => {
-          const lower = r.toLowerCase();
-          if (lower.includes('grand final')) return 100;
-          if (lower.includes('juara 3')) return 90;
-          if (lower.includes('semifinal')) return 80;
-          if (lower.includes('perempat') || lower.includes('8 besar')) return 70;
-          if (lower.includes('16 besar')) return 60;
-          if (lower.includes('32 besar')) return 50;
-          if (lower.includes('play')) return 40;
-          return 30;
-        };
-        const diffWeight = getRoundWeight(b.round) - getRoundWeight(a.round);
-        if (diffWeight !== 0) return diffWeight;
+      // 3. Dalam fase yang sama: Urutkan sesuai Tanggal Kickoff
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) {
+        return dateA.localeCompare(dateB);
       }
 
-      // 4. By Date and Match Number
-      if (a.date && b.date && a.date !== b.date) {
-        return a.date.localeCompare(b.date);
+      // 4. Urutkan sesuai Jam Kickoff
+      const timeA = a.time || '';
+      const timeB = b.time || '';
+      if (timeA !== timeB) {
+        return timeA.localeCompare(timeB);
       }
+
+      // 5. Terakhir urutkan Nomor Pertandingan
       return (a.matchNumber || 0) - (b.matchNumber || 0);
     });
   }, [catMatches, selectedGroup, selectedStatus, searchQuery]);

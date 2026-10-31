@@ -81,27 +81,21 @@ export const LiveScoreSection: React.FC = () => {
       if (aIsKo && !bIsKo) return -1;
       if (!aIsKo && bIsKo) return 1;
 
-      // 3. Within Knockout: Final -> Semifinal -> QF -> 16 Besar -> 32 Besar -> Play-off
-      if (aIsKo && bIsKo) {
-        const getRoundWeight = (r: string) => {
-          const lower = r.toLowerCase();
-          if (lower.includes('grand final')) return 100;
-          if (lower.includes('juara 3')) return 90;
-          if (lower.includes('semifinal')) return 80;
-          if (lower.includes('perempat') || lower.includes('8 besar')) return 70;
-          if (lower.includes('16 besar')) return 60;
-          if (lower.includes('32 besar')) return 50;
-          if (lower.includes('play')) return 40;
-          return 30;
-        };
-        const diffWeight = getRoundWeight(b.round) - getRoundWeight(a.round);
-        if (diffWeight !== 0) return diffWeight;
+      // 3. Tanggal Kickoff
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) {
+        return dateA.localeCompare(dateB);
       }
 
-      // 4. By Date and Match Number
-      if (a.date && b.date && a.date !== b.date) {
-        return a.date.localeCompare(b.date);
+      // 4. Jam Kickoff
+      const timeA = a.time || '';
+      const timeB = b.time || '';
+      if (timeA !== timeB) {
+        return timeA.localeCompare(timeB);
       }
+
+      // 5. Nomor Pertandingan
       return (a.matchNumber || 0) - (b.matchNumber || 0);
     });
 
