@@ -19,6 +19,7 @@ import {
   Award,
   ChevronLeft,
   ChevronRight,
+  ArrowRight,
   Info,
   X,
   Sun,
@@ -107,6 +108,14 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<'ALL' | 'LIVE' | 'FINISHED' | 'UPCOMING'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Sub-filter for Bagan Knockout (Pill selector ronde)
+  const [selectedKnockoutStage, setSelectedKnockoutStage] = useState<string>('ALL');
+
+  // Reset knockout round filter when category changes
+  useEffect(() => {
+    setSelectedKnockoutStage('ALL');
+  }, [selectedCat]);
 
   // Modal Singkatan Klasemen (M, W, S, K, GM, GK, SG, P)
   const [showAbbreviationModal, setShowAbbreviationModal] = useState(false);
@@ -591,8 +600,170 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
 
   // Knockout Matches
   const knockoutMatches = useMemo(() => {
-    return catMatches.filter(m => !m.group || m.round.toLowerCase().includes('final') || m.round.toLowerCase().includes('gugur'));
+    return catMatches.filter(m => {
+      const r = (m.round || '').toLowerCase();
+      const isGroup = Boolean(m.group) && (r.includes('penyisihan') || r.includes('grup') || r.includes('group'));
+      if (isGroup) return false;
+      return (
+        !m.group ||
+        r.includes('play') ||
+        r.includes('besar') ||
+        r.includes('final') ||
+        r.includes('juara 3') ||
+        r.includes('gugur')
+      );
+    });
   }, [catMatches]);
+
+  // Lookup map for fast next match linking
+  const knockoutMatchMap = useMemo(() => {
+    const map = new Map<string, MatchItem>();
+    for (const m of knockoutMatches) {
+      map.set(m.id, m);
+    }
+    return map;
+  }, [knockoutMatches]);
+
+  // Grouped Knockout Stages (Hierarchical & Responsive)
+  const knockoutStages = useMemo(() => {
+    if (knockoutMatches.length === 0) return [];
+
+    const stageDefs: Record<string, {
+      id: string;
+      title: string;
+      shortTitle: string;
+      icon: string;
+      order: number;
+      badgeBg: string;
+      badgeBorder: string;
+      badgeText: string;
+    }> = {
+      PLAYOFF: {
+        id: 'PLAYOFF',
+        title: 'Babak Play-off',
+        shortTitle: 'Play-off',
+        icon: '⚡',
+        order: 1,
+        badgeBg: 'bg-amber-500/10',
+        badgeBorder: 'border-amber-500/30',
+        badgeText: 'text-amber-400',
+      },
+      R32: {
+        id: 'R32',
+        title: 'Babak 32 Besar',
+        shortTitle: '32 Besar',
+        icon: '🔥',
+        order: 2,
+        badgeBg: 'bg-blue-500/10',
+        badgeBorder: 'border-blue-500/30',
+        badgeText: 'text-blue-400',
+      },
+      R16: {
+        id: 'R16',
+        title: 'Babak 16 Besar',
+        shortTitle: '16 Besar',
+        icon: '⚔️',
+        order: 3,
+        badgeBg: 'bg-cyan-500/10',
+        badgeBorder: 'border-cyan-500/30',
+        badgeText: 'text-cyan-400',
+      },
+      QF: {
+        id: 'QF',
+        title: 'Perempat Final (8 Besar)',
+        shortTitle: '8 Besar',
+        icon: '🏟️',
+        order: 4,
+        badgeBg: 'bg-indigo-500/10',
+        badgeBorder: 'border-indigo-500/30',
+        badgeText: 'text-indigo-400',
+      },
+      SF: {
+        id: 'SF',
+        title: 'Babak Semifinal',
+        shortTitle: 'Semifinal',
+        icon: '🔥',
+        order: 5,
+        badgeBg: 'bg-orange-500/10',
+        badgeBorder: 'border-orange-500/30',
+        badgeText: 'text-orange-400',
+      },
+      FINAL: {
+        id: 'FINAL',
+        title: 'Grand Final & Juara 3',
+        shortTitle: 'Final',
+        icon: '🏆',
+        order: 6,
+        badgeBg: 'bg-yellow-500/15',
+        badgeBorder: 'border-yellow-500/40',
+        badgeText: 'text-yellow-400',
+      },
+    };
+
+    const stageBuckets: Record<string, MatchItem[]> = {
+      PLAYOFF: [],
+      R32: [],
+      R16: [],
+      QF: [],
+      SF: [],
+      FINAL: [],
+    };
+
+    const getStageKey = (m: MatchItem): string => {
+      const r = (m.round || '').toLowerCase();
+      if (r.includes('play-off') || r.includes('playoff') || r.includes('22 besar')) return 'PLAYOFF';
+      if (r.includes('32 besar') || r.includes('round of 32')) return 'R32';
+      if (r.includes('16 besar') || r.includes('round of 16')) return 'R16';
+      if (r.includes('perempat') || r.includes('8 besar') || r.includes('quarter') || r.includes('qf')) return 'QF';
+      if ((r.includes('semifinal') || r.includes('semi-final') || r.includes('semi final')) && !r.includes('perempat')) return 'SF';
+      if (r.includes('final') || r.includes('juara 3') || r.includes('3rd')) return 'FINAL';
+      return 'FINAL';
+    };
+
+    const getMatchSortScore = (m: MatchItem): number => {
+      const r = (m.round || '').toLowerCase();
+      const isGrandFinal = r.includes('grand final') || (r.includes('final') && !r.includes('juara 3') && !r.includes('perempat') && !r.includes('semi'));
+      const isJuara3 = r.includes('juara 3') || r.includes('3rd');
+      if (isJuara3) return 9998;
+      if (isGrandFinal) return 9999;
+
+      const numMatch = m.round.match(/(?:Match|Final|Perempat|Semifinal)\s*#?\s*(\d+)/i);
+      if (numMatch && numMatch[1]) {
+        return parseInt(numMatch[1], 10);
+      }
+      return m.matchNumber || 0;
+    };
+
+    for (const m of knockoutMatches) {
+      const key = getStageKey(m);
+      if (stageBuckets[key]) {
+        stageBuckets[key].push(m);
+      }
+    }
+
+    return Object.entries(stageBuckets)
+      .filter(([_, list]) => list.length > 0)
+      .map(([key, list]) => {
+        const sorted = [...list].sort((a, b) => {
+          const scoreA = getMatchSortScore(a);
+          const scoreB = getMatchSortScore(b);
+          if (scoreA !== scoreB) return scoreA - scoreB;
+          if (a.date && b.date && a.date !== b.date) return a.date.localeCompare(b.date);
+          if (a.time && b.time && a.time !== b.time) return a.time.localeCompare(b.time);
+          return 0;
+        });
+        return {
+          ...stageDefs[key],
+          matches: sorted,
+        };
+      })
+      .sort((a, b) => a.order - b.order);
+  }, [knockoutMatches]);
+
+  const activeSelectedStage = useMemo(() => {
+    if (selectedKnockoutStage === 'ALL') return null;
+    return knockoutStages.find(s => s.id === selectedKnockoutStage) || null;
+  }, [knockoutStages, selectedKnockoutStage]);
 
   // Category counts from real registrations
   const categoryRegistrationCounts = useMemo(() => {
@@ -628,6 +799,277 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
       else forms.push('L');
     }
     return forms;
+  };
+
+  // Render Card Pertandingan Knockout
+  const renderKnockoutMatchCard = (m: MatchItem) => {
+    const isLight = theme === 'light';
+    const isTeamAWinner =
+      m.status === 'FINISHED' &&
+      (m.winnerId === 'A' ||
+        (m.teamA.score !== undefined && m.teamB.score !== undefined && m.teamA.score > m.teamB.score) ||
+        (m.teamA.score === m.teamB.score && (m.teamA.penalties ?? 0) > (m.teamB.penalties ?? 0)));
+    const isTeamBWinner =
+      m.status === 'FINISHED' &&
+      (m.winnerId === 'B' ||
+        (m.teamA.score !== undefined && m.teamB.score !== undefined && m.teamB.score > m.teamA.score) ||
+        (m.teamA.score === m.teamB.score && (m.teamB.penalties ?? 0) > (m.teamA.penalties ?? 0)));
+
+    const teamAPlaceholder = isPlaceholderTeam(m.teamA);
+    const teamBPlaceholder = isPlaceholderTeam(m.teamB);
+
+    const isGrandFinalMatch = (m.round || '').toLowerCase().includes('grand final');
+    const isThirdPlaceMatch = (m.round || '').toLowerCase().includes('juara 3');
+
+    // Next match target resolution
+    const nextMatch = m.nextMatchId ? knockoutMatchMap.get(m.nextMatchId) : null;
+
+    return (
+      <div
+        key={m.id}
+        className={`rounded-2xl transition-all duration-200 overflow-hidden ${
+          isGrandFinalMatch
+            ? isLight
+              ? 'bg-gradient-to-b from-amber-50 to-white border-2 border-amber-400 shadow-lg shadow-amber-200/50'
+              : 'bg-gradient-to-b from-amber-950/40 via-slate-900/90 to-slate-950 border-2 border-amber-500/60 shadow-xl shadow-amber-500/10'
+            : isLight
+            ? 'bg-white border border-slate-200 hover:border-slate-300 shadow-sm'
+            : 'bg-slate-900/70 border border-white/10 hover:border-white/20 shadow-md'
+        }`}
+      >
+        {/* Header Laga */}
+        <div
+          className={`px-3.5 py-2.5 flex items-center justify-between text-[11px] border-b ${
+            isLight ? 'border-slate-100 bg-slate-50/70' : 'border-white/5 bg-slate-950/40'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span
+              className={`font-extrabold truncate ${
+                isGrandFinalMatch ? 'text-amber-400' : isLight ? 'text-slate-700' : 'text-slate-300'
+              }`}
+            >
+              {m.round}
+            </span>
+          </div>
+          <div className="shrink-0 flex items-center gap-1.5">
+            {m.status === 'LIVE' && (
+              <span className="px-2 py-0.5 rounded-full bg-red-600 text-white font-black text-[10px] animate-pulse flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                LIVE {m.liveMinute ? `${m.liveMinute}'` : ''}
+              </span>
+            )}
+            {m.status === 'FINISHED' && (
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold text-[10px]">
+                SELESAI
+              </span>
+            )}
+            {m.status === 'UPCOMING' && (
+              <span className={`text-[10px] font-semibold flex items-center gap-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                <Clock className="w-3 h-3 opacity-60" />
+                {m.date ? `${m.date.slice(5)} ` : ''}{m.time || 'TBD'}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Body Laga (Tim A & Tim B) */}
+        <div className="p-3 space-y-2">
+          {/* Row Tim A */}
+          <div
+            className={`flex items-center justify-between p-2 rounded-xl transition ${
+              isTeamAWinner
+                ? isLight
+                  ? 'bg-emerald-50/90 border border-emerald-200'
+                  : 'bg-emerald-950/40 border border-emerald-500/30'
+                : isLight
+                ? 'bg-slate-50 border border-transparent'
+                : 'bg-slate-950/50 border border-white/5'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+              <div
+                className={`w-7 h-7 rounded-lg overflow-hidden shrink-0 flex items-center justify-center p-0.5 border ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-white/10'
+                }`}
+              >
+                {getTeamLogo(m.teamA.name, m.teamA.logo) ? (
+                  <img
+                    loading="lazy"
+                    src={getTeamLogo(m.teamA.name, m.teamA.logo)}
+                    alt={m.teamA.name}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <Shield className={`w-3.5 h-3.5 ${teamAPlaceholder ? 'text-slate-500' : 'text-amber-400'}`} />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span
+                  className={`block text-xs truncate ${
+                    teamAPlaceholder
+                      ? isLight
+                        ? 'text-slate-400 italic font-medium'
+                        : 'text-slate-400 italic font-medium'
+                      : isLight
+                      ? 'text-slate-800 font-extrabold'
+                      : 'text-white font-extrabold'
+                  }`}
+                >
+                  {m.teamA.name || 'Belum Ada Tim'}
+                </span>
+                {m.teamA.institution && !teamAPlaceholder && (
+                  <span className={`block text-[10px] truncate ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {m.teamA.institution}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {m.teamA.penalties !== undefined && m.status === 'FINISHED' && (
+                <span className="text-[10px] font-bold text-slate-400 mr-0.5">
+                  (P:{m.teamA.penalties})
+                </span>
+              )}
+              <span
+                className={`min-w-6 text-center text-sm font-black px-1.5 py-0.5 rounded ${
+                  m.status === 'UPCOMING'
+                    ? isLight
+                      ? 'text-slate-300'
+                      : 'text-slate-600'
+                    : isTeamAWinner
+                    ? 'text-emerald-400 font-black'
+                    : isLight
+                    ? 'text-slate-700'
+                    : 'text-slate-300'
+                }`}
+              >
+                {m.status === 'UPCOMING' ? '-' : (m.teamA.score ?? 0)}
+              </span>
+              {isTeamAWinner && (
+                <span className="text-emerald-400 text-xs font-black">✓</span>
+              )}
+            </div>
+          </div>
+
+          {/* Row Tim B */}
+          <div
+            className={`flex items-center justify-between p-2 rounded-xl transition ${
+              isTeamBWinner
+                ? isLight
+                  ? 'bg-emerald-50/90 border border-emerald-200'
+                  : 'bg-emerald-950/40 border border-emerald-500/30'
+                : isLight
+                ? 'bg-slate-50 border border-transparent'
+                : 'bg-slate-950/50 border border-white/5'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+              <div
+                className={`w-7 h-7 rounded-lg overflow-hidden shrink-0 flex items-center justify-center p-0.5 border ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-white/10'
+                }`}
+              >
+                {getTeamLogo(m.teamB.name, m.teamB.logo) ? (
+                  <img
+                    loading="lazy"
+                    src={getTeamLogo(m.teamB.name, m.teamB.logo)}
+                    alt={m.teamB.name}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <Shield className={`w-3.5 h-3.5 ${teamBPlaceholder ? 'text-slate-500' : 'text-blue-400'}`} />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span
+                  className={`block text-xs truncate ${
+                    teamBPlaceholder
+                      ? isLight
+                        ? 'text-slate-400 italic font-medium'
+                        : 'text-slate-400 italic font-medium'
+                      : isLight
+                      ? 'text-slate-800 font-extrabold'
+                      : 'text-white font-extrabold'
+                  }`}
+                >
+                  {m.teamB.name || 'Belum Ada Tim'}
+                </span>
+                {m.teamB.institution && !teamBPlaceholder && (
+                  <span className={`block text-[10px] truncate ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {m.teamB.institution}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {m.teamB.penalties !== undefined && m.status === 'FINISHED' && (
+                <span className="text-[10px] font-bold text-slate-400 mr-0.5">
+                  (P:{m.teamB.penalties})
+                </span>
+              )}
+              <span
+                className={`min-w-6 text-center text-sm font-black px-1.5 py-0.5 rounded ${
+                  m.status === 'UPCOMING'
+                    ? isLight
+                      ? 'text-slate-300'
+                      : 'text-slate-600'
+                    : isTeamBWinner
+                    ? 'text-emerald-400 font-black'
+                    : isLight
+                    ? 'text-slate-700'
+                    : 'text-slate-300'
+                }`}
+              >
+                {m.status === 'UPCOMING' ? '-' : (m.teamB.score ?? 0)}
+              </span>
+              {isTeamBWinner && (
+                <span className="text-emerald-400 text-xs font-black">✓</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Info Laga / Alur Lolos */}
+        <div
+          className={`px-3 py-2 flex items-center justify-between text-[10px] border-t ${
+            isLight ? 'border-slate-100 bg-slate-50/50' : 'border-white/5 bg-slate-950/30'
+          }`}
+        >
+          <span className={`truncate flex items-center gap-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+            <span className="opacity-60">📍</span>
+            {m.pitch || 'Lapangan Utama'}
+          </span>
+
+          {m.status === 'FINISHED' ? (
+            <span className="text-emerald-400 font-bold flex items-center gap-1 truncate">
+              <Trophy className="w-3 h-3 text-emerald-400 shrink-0" />
+              <span className="truncate">
+                {isTeamAWinner ? m.teamA.name : isTeamBWinner ? m.teamB.name : 'Selesai'}
+              </span>
+            </span>
+          ) : nextMatch ? (
+            <span className={`font-medium flex items-center gap-1 truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+              <span>Menuju</span>
+              <span className="font-bold text-amber-400 truncate">{nextMatch.round}</span>
+            </span>
+          ) : isGrandFinalMatch ? (
+            <span className="text-amber-400 font-bold flex items-center gap-1">
+              <Trophy className="w-3 h-3 text-amber-400" />
+              <span>Perebutan Juara</span>
+            </span>
+          ) : isThirdPlaceMatch ? (
+            <span className="text-amber-300 font-semibold flex items-center gap-1">
+              <span>Perebutan Juara 3</span>
+            </span>
+          ) : (
+            <span className={`text-[10px] ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
+              Sistem Gugur
+            </span>
+          )}
+        </div>
+      </div>
+    );
   };
 
   // Safe Loading flag: automatically stops after 5s watchdog
@@ -2392,25 +2834,137 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {knockoutMatches.map(m => (
-                    <div key={m.id} className="p-4 rounded-xl bg-slate-950/60 border border-white/10">
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 mb-2">
-                        <span className="font-bold text-amber-400">{m.round}</span>
-                        <span>{m.date} {m.time}</span>
+                <div className="space-y-5">
+                  {/* Pill Navigasi Ronde (Ramah HP / Tablet / Desktop) */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-thin scrollbar-thumb-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedKnockoutStage('ALL')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                        selectedKnockoutStage === 'ALL'
+                          ? 'bg-red-600 text-white shadow-md shadow-red-600/40'
+                          : theme === 'light'
+                          ? 'bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200'
+                          : 'bg-slate-950/70 border border-white/10 text-slate-300 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Semua Bagan</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/40 text-slate-200 font-bold">
+                        {knockoutMatches.length}
+                      </span>
+                    </button>
+
+                    {knockoutStages.map(stage => {
+                      const isStageActive = selectedKnockoutStage === stage.id;
+                      return (
+                        <button
+                          key={stage.id}
+                          type="button"
+                          onClick={() => setSelectedKnockoutStage(stage.id)}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                            isStageActive
+                              ? 'bg-red-600 text-white shadow-md shadow-red-600/40'
+                              : theme === 'light'
+                              ? 'bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200'
+                              : 'bg-slate-950/70 border border-white/10 text-slate-300 hover:text-white hover:bg-slate-800'
+                          }`}
+                        >
+                          <span>{stage.icon}</span>
+                          <span>{stage.shortTitle}</span>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                              isStageActive ? 'bg-black/40 text-white' : 'bg-black/30 text-slate-400'
+                            }`}
+                          >
+                            {stage.matches.length}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* TAMPILAN 1: SEMUA BAGAN (Bagan Pohon Turnamen Berkolom Horizontal) */}
+                  {selectedKnockoutStage === 'ALL' ? (
+                    <div>
+                      {/* Petunjuk Mobile */}
+                      <div className="flex md:hidden items-center justify-between text-[11px] text-slate-400 mb-2 px-1">
+                        <span>💡 Geser ke kanan untuk melihat bagan berikutnya</span>
+                        <span className="text-red-400 font-bold flex items-center gap-0.5">
+                          Geser <ArrowRight className="w-3 h-3 inline" />
+                        </span>
                       </div>
-                      <div className="space-y-1 text-xs font-bold text-white">
-                        <div className="flex items-center justify-between p-1.5 rounded bg-slate-900">
-                          <span>{m.teamA.name}</span>
-                          <span>{m.teamA.score ?? '-'}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-1.5 rounded bg-slate-900">
-                          <span>{m.teamB.name}</span>
-                          <span>{m.teamB.score ?? '-'}</span>
-                        </div>
+
+                      <div className="flex gap-4 sm:gap-6 overflow-x-auto pb-6 pt-1 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent snap-x">
+                        {knockoutStages.map((stage, sIdx) => (
+                          <div
+                            key={stage.id}
+                            className="w-[285px] sm:w-[320px] shrink-0 snap-start flex flex-col space-y-3.5"
+                          >
+                            {/* Header Kolom Ronde */}
+                            <div
+                              className={`p-3 rounded-2xl border ${stage.badgeBorder} ${stage.badgeBg} flex items-center justify-between shadow-sm`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-base shrink-0">{stage.icon}</span>
+                                <div className="min-w-0">
+                                  <h3 className={`text-xs font-black uppercase tracking-wider truncate ${stage.badgeText}`}>
+                                    {stage.title}
+                                  </h3>
+                                  <span className={`text-[10px] ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                                    Tahap {sIdx + 1} dari {knockoutStages.length}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/40 text-slate-300 shrink-0">
+                                {stage.matches.length} Laga
+                              </span>
+                            </div>
+
+                            {/* Daftar Kartu Pertandingan Kolom */}
+                            <div className="space-y-3">
+                              {stage.matches.map(m => renderKnockoutMatchCard(m))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
+                  ) : activeSelectedStage ? (
+                    /* TAMPILAN 2: FOKUS BABAK TERTENTU (Grid Vertikal Responsif - Ramah Mobile) */
+                    <div className="space-y-4">
+                      <div
+                        className={`p-4 rounded-2xl border ${activeSelectedStage.badgeBorder} ${activeSelectedStage.badgeBg} flex flex-col sm:flex-row sm:items-center justify-between gap-3`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{activeSelectedStage.icon}</span>
+                          <div>
+                            <h3 className={`text-sm sm:text-base font-black uppercase tracking-wide ${activeSelectedStage.badgeText}`}>
+                              {activeSelectedStage.title}
+                            </h3>
+                            <p className={`text-xs ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
+                              Daftar pertandingan babak {activeSelectedStage.shortTitle} Kategori {cleanCategoryName(currentCatDetail.name)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+                          <span className="text-xs font-bold px-3 py-1 rounded-full bg-black/40 text-slate-200">
+                            {activeSelectedStage.matches.length} Pertandingan
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedKnockoutStage('ALL')}
+                            className="text-xs text-red-400 hover:text-red-300 font-bold underline cursor-pointer"
+                          >
+                            Lihat Semua Bagan
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                        {activeSelectedStage.matches.map(m => renderKnockoutMatchCard(m))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
