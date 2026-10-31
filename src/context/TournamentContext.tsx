@@ -2867,6 +2867,67 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return generatedKnockout;
   };
 
+  // Auto-heal migrasi skema knockout SMP jika data tersimpan masih format lama (34 besar ada 16 laga & 32 besar hilang)
+  useEffect(() => {
+    if (matches.length > 0) {
+      const smpMatches = matches.filter(m => m.category === 'SMP');
+      if (smpMatches.length > 0) {
+        const isKnockout = (m: MatchItem) =>
+          !m.group ||
+          m.round.toLowerCase().includes('final') ||
+          m.round.toLowerCase().includes('34 besar') ||
+          m.round.toLowerCase().includes('32 besar') ||
+          m.round.toLowerCase().includes('16 besar') ||
+          m.round.toLowerCase().includes('8 besar') ||
+          m.round.toLowerCase().includes('play-off') ||
+          m.round.toLowerCase().includes('playoff') ||
+          m.round.toLowerCase().includes('perempat') ||
+          m.round.toLowerCase().includes('gugur');
+
+        const smpKnockout = smpMatches.filter(isKnockout);
+        if (smpKnockout.length > 0) {
+          const r34Count = smpKnockout.filter(m => m.round.toLowerCase().includes('34 besar')).length;
+          const has32 = smpKnockout.some(m => m.round.toLowerCase().includes('32 besar'));
+          const isOldFormat = r34Count !== 2 || !has32 || smpKnockout.length !== 34;
+
+          if (isOldFormat) {
+            const smpGroupMatches = smpMatches.filter(m => !isKnockout(m));
+            const maxMatchNum = smpGroupMatches.reduce((max, m) => Math.max(max, m.matchNumber || 0), 0);
+            const kickoffTimes = ['08:00', '09:15', '10:30', '13:30', '14:45', '16:00', '19:00', '20:15'];
+            const defaultVenue = config.venueName || 'Gedung Utama GOR Tawang Alun Banyuwangi';
+            const pitches = [
+              defaultVenue,
+              `${defaultVenue} - Lapangan A`,
+              `${defaultVenue} - Lapangan B`,
+            ];
+
+            const newSmpKnockout = generateKnockoutMatches(
+              'SMP',
+              17,
+              maxMatchNum + 1,
+              config.tournamentStartDate || '2026-10-24',
+              defaultVenue,
+              kickoffTimes,
+              pitches
+            );
+
+            const updatedSmp = [...smpGroupMatches, ...newSmpKnockout];
+            setMatches(prev => {
+              const other = prev.filter(m => m.category !== 'SMP');
+              const combined = [...other, ...updatedSmp];
+              safeLocalStorageSet('wabupcup_matches', JSON.stringify(combined));
+              return combined;
+            });
+
+            ApiService.replaceCategoryMatches('SMP', updatedSmp).catch(err => {
+              console.warn('Could not replace category matches in backend:', err);
+            });
+          }
+        }
+      }
+    }
+  }, [matches, config]);
+
   const generateMatchesFromGroups = (category: TournamentCategory): { success: boolean; message: string; matches?: MatchItem[] } => {
     const catGroups = groups.filter(g => g.category === category);
     if (catGroups.length === 0) {
@@ -3001,10 +3062,13 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     let currentKnockout = catMatches.filter(isKnockout);
     let needsFullReplace = false;
 
-    // Auto-upgrade format jika kategori SMP (17 grup) belum memiliki laga Babak 34 Besar
-    if (category === 'SMP' && catGroups.length >= 17) {
-      const has34 = currentKnockout.some(m => m.round.toLowerCase().includes('34 besar'));
-      if (!has34) {
+    // Auto-upgrade format jika kategori SMP masih format lama (34 besar ada 16 laga, atau 32 besar tidak ada, atau total laga !== 34)
+    if (category === 'SMP') {
+      const r34Count = currentKnockout.filter(m => m.round.toLowerCase().includes('34 besar')).length;
+      const has32 = currentKnockout.some(m => m.round.toLowerCase().includes('32 besar'));
+      const isOldFormat = currentKnockout.length > 0 && (r34Count !== 2 || !has32 || currentKnockout.length !== 34);
+
+      if (isOldFormat) {
         const maxMatchNum = catMatches.filter(m => !isKnockout(m)).reduce((max, m) => Math.max(max, m.matchNumber || 0), 0);
         const kickoffTimes = ['08:00', '09:15', '10:30', '13:30', '14:45', '16:00', '19:00', '20:15'];
         const defaultVenue = config.venueName || 'Gedung Utama GOR Tawang Alun Banyuwangi';
@@ -3015,7 +3079,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         ];
         currentKnockout = generateKnockoutMatches(
           category,
-          catGroups.length,
+          catGroups.length || 17,
           maxMatchNum + 1,
           config.tournamentStartDate || '2026-10-24',
           defaultVenue,
