@@ -36,9 +36,26 @@ export const LiveScoreSection: React.FC = () => {
     m.round.toLowerCase().includes('play') ||
     m.round.toLowerCase().includes('gugur');
 
+  // Cek apakah tim masih berupa placeholder / TBD / belum terisi
+  const isPlaceholderTeam = (team?: { name?: string; institution?: string }) => {
+    if (!team || !team.name) return true;
+    const name = team.name.trim();
+    if (!name || name === 'TBD' || name === '-' || name === 'Belum Ada Tim') return true;
+    if (team.institution === 'Menunggu Hasil Grup' || team.institution === 'TBD') return true;
+    if (/^(?:Juara|Pemenang|Runner-?up|Peringkat\s+2|Kalah)\s+(?:Grup|Terbaik|Play-?off|\d+|Match|Perempat|Semifinal)/i.test(name)) {
+      return true;
+    }
+    return false;
+  };
+
+  const hasRealTeams = (m: MatchItem) => {
+    if (m.status === 'FINISHED') return true;
+    return !isPlaceholderTeam(m.teamA) && !isPlaceholderTeam(m.teamB);
+  };
+
   // Active / Upcoming matches only (FINISHED matches are archived to the bracket section)
-  const activeAndUpcomingMatches = matches.filter(m => m.status !== 'FINISHED');
-  const liveMatches = matches.filter(m => m.status === 'LIVE');
+  const activeAndUpcomingMatches = matches.filter(m => m.status !== 'FINISHED' && hasRealTeams(m));
+  const liveMatches = matches.filter(m => m.status === 'LIVE' && hasRealTeams(m));
   const activeLiveMatch = liveMatches[0] || null;
 
   // Filtered and smart-sorted matches list (Prioritas: LIVE -> Babak Gugur -> Fase Grup)

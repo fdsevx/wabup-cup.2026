@@ -410,9 +410,28 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
     m.round.toLowerCase().includes('play') ||
     m.round.toLowerCase().includes('gugur');
 
+  // Cek apakah tim masih berupa placeholder / TBD / belum terisi
+  const isPlaceholderTeam = (team?: { name?: string; institution?: string }) => {
+    if (!team || !team.name) return true;
+    const name = team.name.trim();
+    if (!name || name === 'TBD' || name === '-' || name === 'Belum Ada Tim') return true;
+    if (team.institution === 'Menunggu Hasil Grup' || team.institution === 'TBD') return true;
+    if (/^(?:Juara|Pemenang|Runner-?up|Peringkat\s+2|Kalah)\s+(?:Grup|Terbaik|Play-?off|\d+|Match|Perempat|Semifinal)/i.test(name)) {
+      return true;
+    }
+    return false;
+  };
+
+  // Hanya tampilkan laga yang kedua timnya sudah resmi/definitif
+  const hasRealTeams = (m: MatchItem) => {
+    if (m.status === 'FINISHED') return true;
+    return !isPlaceholderTeam(m.teamA) && !isPlaceholderTeam(m.teamB);
+  };
+
   // Upcoming matches (UPCOMING or LIVE), prioritized by LIVE -> Knockout -> Group
   const upcomingMatches = useMemo(() => {
-    const sorted = [...catMatches].sort((a, b) => {
+    const validMatches = catMatches.filter(hasRealTeams);
+    const sorted = [...validMatches].sort((a, b) => {
       if (a.status === 'LIVE' && b.status !== 'LIVE') return -1;
       if (b.status === 'LIVE' && a.status !== 'LIVE') return 1;
 
@@ -428,9 +447,10 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
 
   // Featured recent/detailed matches for bottom right section in Klasemen tab
   const detailedScheduleMatches = useMemo(() => {
-    const live = catMatches.filter(m => m.status === 'LIVE');
-    const finished = catMatches.filter(m => m.status === 'FINISHED').reverse();
-    const upcoming = catMatches.filter(m => m.status === 'UPCOMING');
+    const validMatches = catMatches.filter(hasRealTeams);
+    const live = validMatches.filter(m => m.status === 'LIVE');
+    const finished = validMatches.filter(m => m.status === 'FINISHED').reverse();
+    const upcoming = validMatches.filter(m => m.status === 'UPCOMING');
     const combined = [...live, ...finished, ...upcoming];
     return combined.slice(0, 6);
   }, [catMatches]);
@@ -438,6 +458,9 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
   // Filtered matches for Jadwal & Hasil tab (Smart Sorted: LIVE -> Babak Gugur -> Fase Grup)
   const filteredMatches = useMemo(() => {
     const list = catMatches.filter(m => {
+      // Sembunyikan laga jika nama tim belum definitif / masih placeholder
+      if (!hasRealTeams(m)) return false;
+
       // Group filter
       if (selectedGroup === 'KNOCKOUT') {
         if (!isKnockoutMatch(m)) return false;
