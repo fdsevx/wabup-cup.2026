@@ -2867,8 +2867,11 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return generatedKnockout;
   };
 
+  const smpUpgradeAttemptedRef = useRef(false);
+
   // Auto-heal migrasi skema knockout SMP jika data tersimpan masih format lama (34 besar ada 16 laga & 32 besar hilang)
   useEffect(() => {
+    if (smpUpgradeAttemptedRef.current) return;
     if (matches.length > 0) {
       const smpMatches = matches.filter(m => m.category === 'SMP');
       if (smpMatches.length > 0) {
@@ -2891,6 +2894,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           const isOldFormat = r34Count !== 2 || !has32 || smpKnockout.length !== 34;
 
           if (isOldFormat) {
+            smpUpgradeAttemptedRef.current = true;
             const smpGroupMatches = smpMatches.filter(m => !isKnockout(m));
             const maxMatchNum = smpGroupMatches.reduce((max, m) => Math.max(max, m.matchNumber || 0), 0);
             const kickoffTimes = ['08:00', '09:15', '10:30', '13:30', '14:45', '16:00', '19:00', '20:15'];
@@ -2919,9 +2923,16 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               return combined;
             });
 
-            ApiService.replaceCategoryMatches('SMP', updatedSmp).catch(err => {
-              console.warn('Could not replace category matches in backend:', err);
-            });
+            // Hanya panggil backend jika admin login guna menghemat RU & FOT dan mencegah 401 Unauthorized
+            const isAdminLoggedIn = !!safeLocalStorageGet<AdminUser | null>('wabupcup_current_admin', null);
+            if (isAdminLoggedIn) {
+              ApiService.replaceCategoryMatches('SMP', updatedSmp).catch(err => {
+                console.warn('Could not replace category matches in backend:', err);
+              });
+            }
+          } else {
+            // Skema sudah format baru yang benar, tandai ref agar tidak perlu di-evaluasi lagi
+            smpUpgradeAttemptedRef.current = true;
           }
         }
       }
