@@ -2895,7 +2895,7 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
                       </div>
 
                       <div className="flex gap-4 sm:gap-6 overflow-x-auto pb-6 pt-1 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent snap-x">
-                        {knockoutStages.map((stage, sIdx) => (
+                        {knockoutStages.map(stage => (
                           <div
                             key={stage.id}
                             className="w-[285px] sm:w-[320px] shrink-0 snap-start flex flex-col space-y-3.5"
@@ -2906,14 +2906,9 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
                             >
                               <div className="flex items-center gap-2 min-w-0">
                                 <span className="text-base shrink-0">{stage.icon}</span>
-                                <div className="min-w-0">
-                                  <h3 className={`text-xs font-black uppercase tracking-wider truncate ${stage.badgeText}`}>
-                                    {stage.title}
-                                  </h3>
-                                  <span className={`text-[10px] ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
-                                    Tahap {sIdx + 1} dari {knockoutStages.length}
-                                  </span>
-                                </div>
+                                <h3 className={`text-xs font-black uppercase tracking-wider truncate ${stage.badgeText}`}>
+                                  {stage.title}
+                                </h3>
                               </div>
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-black/40 text-slate-300 shrink-0">
                                 {stage.matches.length} Laga
