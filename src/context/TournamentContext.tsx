@@ -1358,8 +1358,25 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             const diffMs = nowTime - matchStartTime;
             const diffMinutes = Math.floor(diffMs / (60 * 1000));
 
+            // Proteksi: Jangan otomatis LIVE jika Tim A atau Tim B belum terisi / masih berupa placeholder
+            const isPlaceholderTeam = (team?: { name?: string; institution?: string }) => {
+              if (!team || !team.name) return true;
+              const name = team.name.trim();
+              if (!name || name === 'TBD' || name === '-' || name === 'Belum Ada Tim') return true;
+              if (team.institution === 'Menunggu Hasil Grup' || team.institution === 'TBD') return true;
+              if (/^(Juara|Pemenang|Runner-?up|Peringkat\s+2|Kalah)\s+/i.test(name)) return true;
+              return false;
+            };
+
+            const hasPlaceholders = isPlaceholderTeam(m.teamA) || isPlaceholderTeam(m.teamB);
+
             // If match time has arrived (0 to 120 minutes from kickoff)
             if (diffMinutes >= 0 && diffMinutes <= 120) {
+              if (hasPlaceholders) {
+                // Tim belum definitif: abaikan auto-LIVE, biarkan tetap UPCOMING
+                return m;
+              }
+
               let minuteStr = '';
               if (diffMinutes < 45) {
                 minuteStr = `${Math.max(1, diffMinutes + 1)}'`;
