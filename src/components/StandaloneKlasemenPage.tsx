@@ -1036,9 +1036,8 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
             isLight ? 'border-slate-100 bg-slate-50/50' : 'border-white/5 bg-slate-950/30'
           }`}
         >
-          <span className={`truncate flex items-center gap-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-            <span className="opacity-60">📍</span>
-            {m.pitch || 'Lapangan Utama'}
+          <span className={`font-semibold shrink-0 ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
+            {m.matchNumber ? `Match #${m.matchNumber}` : 'Sistem Gugur'}
           </span>
 
           {m.status === 'FINISHED' ? (
