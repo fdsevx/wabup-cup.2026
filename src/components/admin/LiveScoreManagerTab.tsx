@@ -305,7 +305,8 @@ export const LiveScoreManagerTab: React.FC = () => {
           if (lower.includes('semifinal')) return 80;
           if (lower.includes('perempat') || lower.includes('8 besar')) return 70;
           if (lower.includes('16 besar')) return 60;
-          if (lower.includes('34 besar') || lower.includes('32 besar')) return 50;
+          if (lower.includes('32 besar')) return 50;
+          if (lower.includes('34 besar')) return 45;
           if (lower.includes('play')) return 40;
           return 30;
         };

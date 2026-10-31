@@ -2512,8 +2512,200 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         pitch: defaultVenue,
         status: 'UPCOMING',
       });
+    } else if (category === 'SMP' || numGroups >= 17) {
+      // =========================================================================
+      // FORMAT SMP (17 Grup A s/d Q: 34 Tim)
+      // BABAK 34 BESAR (2 Laga) -> BABAK 32 BESAR (16 Laga) -> 8 Laga 16 Besar -> 4 QF -> 2 SF -> 3rd/Final
+      // =========================================================================
+      const r34Ids = Array.from({ length: 2 }, (_, i) => `match-${category.toLowerCase()}-r34-${i + 1}-${Date.now()}`);
+      const r32Ids = Array.from({ length: 16 }, (_, i) => `match-${category.toLowerCase()}-r32-${i + 1}-${Date.now()}`);
+      const r16Ids = Array.from({ length: 8 }, (_, i) => `match-${category.toLowerCase()}-r16-${i + 1}-${Date.now()}`);
+
+      // 1. Babak 34 Besar (2 Laga Play-in: 4 tim berebut 2 tiket ke Babak 32 Besar)
+      generatedKnockout.push({
+        id: r34Ids[0],
+        matchNumber: counter++,
+        category,
+        round: 'Babak 34 Besar - Match 1',
+        roundIndex: 1,
+        teamA: { name: 'Runner-up Grup P', institution: 'Menunggu Hasil Grup' },
+        teamB: { name: 'Runner-up Grup Q', institution: 'Menunggu Hasil Grup' },
+        date: '2026-10-25',
+        time: kickoffTimes[0],
+        pitch: pitches[0],
+        status: 'UPCOMING',
+        nextMatchId: r32Ids[14], // 32 Besar Match 15 Slot B
+        nextMatchSlot: 'B',
+      });
+      generatedKnockout.push({
+        id: r34Ids[1],
+        matchNumber: counter++,
+        category,
+        round: 'Babak 34 Besar - Match 2',
+        roundIndex: 1,
+        teamA: { name: 'Juara Grup P', institution: 'Menunggu Hasil Grup' },
+        teamB: { name: 'Juara Grup Q', institution: 'Menunggu Hasil Grup' },
+        date: '2026-10-25',
+        time: kickoffTimes[1 % kickoffTimes.length],
+        pitch: pitches[1 % pitches.length],
+        status: 'UPCOMING',
+        nextMatchId: r32Ids[15], // 32 Besar Match 16 Slot B
+        nextMatchSlot: 'B',
+      });
+
+      // 2. Babak 32 Besar (16 Laga)
+      // Match 1-14: Pasangan Juara dan Runner-up Grup A s/d N (28 tim)
+      // Match 15: Juara Grup O vs Pemenang 34 Besar Match 1
+      // Match 16: Runner-up Grup O vs Pemenang 34 Besar Match 2
+      for (let i = 0; i < 16; i++) {
+        const assignedR16Id = r16Ids[Math.floor(i / 2)];
+        const assignedR16Slot: 'A' | 'B' = i % 2 === 0 ? 'A' : 'B';
+        let tAName = '';
+        let tBName = '';
+        let instA = 'Menunggu Hasil Grup';
+        let instB = 'Menunggu Hasil Grup';
+
+        if (i < 7) {
+          const letterA = groupLetters[i * 2];
+          const letterB = groupLetters[i * 2 + 1];
+          tAName = `Juara Grup ${letterA}`;
+          tBName = `Runner-up Grup ${letterB}`;
+        } else if (i < 14) {
+          const idxBase = i - 7;
+          const letterA = groupLetters[idxBase * 2 + 1];
+          const letterB = groupLetters[idxBase * 2];
+          tAName = `Juara Grup ${letterA}`;
+          tBName = `Runner-up Grup ${letterB}`;
+        } else if (i === 14) {
+          tAName = 'Juara Grup O';
+          tBName = 'Pemenang 34 Besar Match 1';
+          instB = 'TBD';
+        } else {
+          tAName = 'Runner-up Grup O';
+          tBName = 'Pemenang 34 Besar Match 2';
+          instB = 'TBD';
+        }
+
+        generatedKnockout.push({
+          id: r32Ids[i],
+          matchNumber: counter++,
+          category,
+          round: `Babak 32 Besar - Match ${i + 1}`,
+          roundIndex: 2,
+          teamA: { name: tAName, institution: instA },
+          teamB: { name: tBName, institution: instB },
+          date: '2026-10-26',
+          time: kickoffTimes[i % kickoffTimes.length],
+          pitch: pitches[i % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: assignedR16Id,
+          nextMatchSlot: assignedR16Slot,
+        });
+      }
+
+      // 3. Babak 16 Besar (8 Laga)
+      for (let i = 0; i < 8; i++) {
+        const assignedQfId = qfIds[Math.floor(i / 2)];
+        const assignedQfSlot: 'A' | 'B' = i % 2 === 0 ? 'A' : 'B';
+        generatedKnockout.push({
+          id: r16Ids[i],
+          matchNumber: counter++,
+          category,
+          round: `Babak 16 Besar - Match ${i + 1}`,
+          roundIndex: 3,
+          teamA: { name: `Pemenang 32 Besar Match ${i * 2 + 1}`, institution: 'TBD' },
+          teamB: { name: `Pemenang 32 Besar Match ${i * 2 + 2}`, institution: 'TBD' },
+          date: '2026-10-28',
+          time: kickoffTimes[i % kickoffTimes.length],
+          pitch: pitches[i % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: assignedQfId,
+          nextMatchSlot: assignedQfSlot,
+        });
+      }
+
+      // 4. Perempat Final (4 Laga)
+      for (let i = 0; i < 4; i++) {
+        const assignedNextId = i < 2 ? sf1Id : sf2Id;
+        const assignedNextSlot: 'A' | 'B' = i % 2 === 0 ? 'A' : 'B';
+        generatedKnockout.push({
+          id: qfIds[i],
+          matchNumber: counter++,
+          category,
+          round: `Perempat Final ${i + 1} (8 Besar)`,
+          roundIndex: 4,
+          teamA: { name: `Pemenang 16 Besar Match ${i * 2 + 1}`, institution: 'TBD' },
+          teamB: { name: `Pemenang 16 Besar Match ${i * 2 + 2}`, institution: 'TBD' },
+          date: '2026-10-29',
+          time: kickoffTimes[i % kickoffTimes.length],
+          pitch: pitches[i % pitches.length],
+          status: 'UPCOMING',
+          nextMatchId: assignedNextId,
+          nextMatchSlot: assignedNextSlot,
+        });
+      }
+
+      // 5. Semifinal (2 Laga)
+      generatedKnockout.push({
+        id: sf1Id,
+        matchNumber: counter++,
+        category,
+        round: 'Semifinal 1',
+        roundIndex: 5,
+        teamA: { name: 'Pemenang Perempat Final 1', institution: 'TBD' },
+        teamB: { name: 'Pemenang Perempat Final 2', institution: 'TBD' },
+        date: '2026-10-30',
+        time: '15:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+        nextMatchId: grandFinalId,
+        nextMatchSlot: 'A',
+      });
+      generatedKnockout.push({
+        id: sf2Id,
+        matchNumber: counter++,
+        category,
+        round: 'Semifinal 2',
+        roundIndex: 5,
+        teamA: { name: 'Pemenang Perempat Final 3', institution: 'TBD' },
+        teamB: { name: 'Pemenang Perempat Final 4', institution: 'TBD' },
+        date: '2026-10-30',
+        time: '16:30',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+        nextMatchId: grandFinalId,
+        nextMatchSlot: 'B',
+      });
+
+      // 6. Perebutan Juara 3 & Grand Final
+      generatedKnockout.push({
+        id: thirdPlaceId,
+        matchNumber: counter++,
+        category,
+        round: 'Perebutan Juara 3',
+        roundIndex: 6,
+        teamA: { name: 'Kalah Semifinal 1', institution: 'TBD' },
+        teamB: { name: 'Kalah Semifinal 2', institution: 'TBD' },
+        date: '2026-10-31',
+        time: '16:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
+      generatedKnockout.push({
+        id: grandFinalId,
+        matchNumber: counter++,
+        category,
+        round: 'GRAND FINAL WABUP CUP 2026',
+        roundIndex: 7,
+        teamA: { name: 'Pemenang Semifinal 1', institution: 'TBD' },
+        teamB: { name: 'Pemenang Semifinal 2', institution: 'TBD' },
+        date: '2026-10-31',
+        time: '19:00',
+        pitch: defaultVenue,
+        status: 'UPCOMING',
+      });
     } else {
-      // 12+ Grup (SMA: 16 Grup, SMP: 17 Grup -> BABAK 32 BESAR: 16 Laga R32 -> 8 Laga R16 -> 4 QF -> 2 SF -> 3rd/Final)
+      // FORMAT SMA / LAINNYA (16 Grup A s/d P: 32 Tim)
       const r32Ids = Array.from({ length: 16 }, (_, i) => `match-${category.toLowerCase()}-r32-${i + 1}-${Date.now()}`);
       const r16Ids = Array.from({ length: 8 }, (_, i) => `match-${category.toLowerCase()}-r16-${i + 1}-${Date.now()}`);
 
@@ -2552,14 +2744,11 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           tBName = `Runner-up Grup ${groupLetters[(i + 1) % groupLetters.length]}`;
         }
 
-        const isSmp = category === 'SMP' || numGroups >= 17;
-        const roundPrefix = isSmp ? 'Babak 34 Besar' : 'Babak 32 Besar';
-
         generatedKnockout.push({
           id: r32Ids[i],
           matchNumber: counter++,
           category,
-          round: `${roundPrefix} - Match ${i + 1}`,
+          round: `Babak 32 Besar - Match ${i + 1}`,
           roundIndex: 1,
           teamA: { name: tAName, institution: 'Menunggu Hasil Grup' },
           teamB: { name: tBName, institution: 'Menunggu Hasil Grup' },
@@ -2573,8 +2762,6 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       // 8 Laga 16 Besar
-      const isSmp = category === 'SMP' || numGroups >= 17;
-      const prevRoundName = isSmp ? '34 Besar' : '32 Besar';
       for (let i = 0; i < 8; i++) {
         const assignedQfId = qfIds[Math.floor(i / 2)];
         const assignedQfSlot: 'A' | 'B' = i % 2 === 0 ? 'A' : 'B';
@@ -2584,8 +2771,8 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           category,
           round: `Babak 16 Besar - Match ${i + 1}`,
           roundIndex: 2,
-          teamA: { name: `Pemenang ${prevRoundName} Match ${i * 2 + 1}`, institution: 'TBD' },
-          teamB: { name: `Pemenang ${prevRoundName} Match ${i * 2 + 2}`, institution: 'TBD' },
+          teamA: { name: `Pemenang 32 Besar Match ${i * 2 + 1}`, institution: 'TBD' },
+          teamB: { name: `Pemenang 32 Besar Match ${i * 2 + 2}`, institution: 'TBD' },
           date: '2026-10-28',
           time: kickoffTimes[i % kickoffTimes.length],
           pitch: pitches[i % pitches.length],
@@ -2801,6 +2988,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const isKnockout = (m: MatchItem) =>
       !m.group ||
       m.round.toLowerCase().includes('final') ||
+      m.round.toLowerCase().includes('34 besar') ||
       m.round.toLowerCase().includes('16 besar') ||
       m.round.toLowerCase().includes('22 besar') ||
       m.round.toLowerCase().includes('32 besar') ||
@@ -2812,6 +3000,31 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     let currentKnockout = catMatches.filter(isKnockout);
     let needsFullReplace = false;
+
+    // Auto-upgrade format jika kategori SMP (17 grup) belum memiliki laga Babak 34 Besar
+    if (category === 'SMP' && catGroups.length >= 17) {
+      const has34 = currentKnockout.some(m => m.round.toLowerCase().includes('34 besar'));
+      if (!has34) {
+        const maxMatchNum = catMatches.filter(m => !isKnockout(m)).reduce((max, m) => Math.max(max, m.matchNumber || 0), 0);
+        const kickoffTimes = ['08:00', '09:15', '10:30', '13:30', '14:45', '16:00', '19:00', '20:15'];
+        const defaultVenue = config.venueName || 'Gedung Utama GOR Tawang Alun Banyuwangi';
+        const pitches = [
+          defaultVenue,
+          `${defaultVenue} - Lapangan A`,
+          `${defaultVenue} - Lapangan B`,
+        ];
+        currentKnockout = generateKnockoutMatches(
+          category,
+          catGroups.length,
+          maxMatchNum + 1,
+          config.tournamentStartDate || '2026-10-24',
+          defaultVenue,
+          kickoffTimes,
+          pitches
+        );
+        needsFullReplace = true;
+      }
+    }
 
     if (currentKnockout.length === 0) {
       const maxMatchNum = catMatches.reduce((max, m) => Math.max(max, m.matchNumber || 0), 0);
