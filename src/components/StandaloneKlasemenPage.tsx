@@ -403,11 +403,24 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
     return matches.filter(m => m.category === selectedCat);
   }, [matches, selectedCat]);
 
-  // Upcoming matches (UPCOMING or LIVE)
+  const isKnockoutMatch = (m: MatchItem) =>
+    !m.group ||
+    m.round.toLowerCase().includes('final') ||
+    m.round.toLowerCase().includes('besar') ||
+    m.round.toLowerCase().includes('play') ||
+    m.round.toLowerCase().includes('gugur');
+
+  // Upcoming matches (UPCOMING or LIVE), prioritized by LIVE -> Knockout -> Group
   const upcomingMatches = useMemo(() => {
     const sorted = [...catMatches].sort((a, b) => {
       if (a.status === 'LIVE' && b.status !== 'LIVE') return -1;
       if (b.status === 'LIVE' && a.status !== 'LIVE') return 1;
+
+      const aIsKo = isKnockoutMatch(a);
+      const bIsKo = isKnockoutMatch(b);
+      if (aIsKo && !bIsKo) return -1;
+      if (!aIsKo && bIsKo) return 1;
+
       return (a.matchNumber || 0) - (b.matchNumber || 0);
     });
     return sorted.filter(m => m.status === 'UPCOMING' || m.status === 'LIVE').slice(0, 5);
@@ -422,12 +435,12 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
     return combined.slice(0, 6);
   }, [catMatches]);
 
-  // Filtered matches for Jadwal & Hasil tab
+  // Filtered matches for Jadwal & Hasil tab (Smart Sorted: LIVE -> Babak Gugur -> Fase Grup)
   const filteredMatches = useMemo(() => {
-    return catMatches.filter(m => {
+    const list = catMatches.filter(m => {
       // Group filter
       if (selectedGroup === 'KNOCKOUT') {
-        if (m.group) return false;
+        if (!isKnockoutMatch(m)) return false;
       } else if (selectedGroup !== 'ALL') {
         if (m.group !== selectedGroup) return false;
       }
@@ -447,6 +460,41 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
         return matchNameA || matchNameB || matchRound || matchGroup;
       }
       return true;
+    });
+
+    return list.sort((a, b) => {
+      // 1. LIVE matches first
+      if (a.status === 'LIVE' && b.status !== 'LIVE') return -1;
+      if (b.status === 'LIVE' && a.status !== 'LIVE') return 1;
+
+      // 2. Knockout matches prioritized over Group matches
+      const aIsKo = isKnockoutMatch(a);
+      const bIsKo = isKnockoutMatch(b);
+      if (aIsKo && !bIsKo) return -1;
+      if (!aIsKo && bIsKo) return 1;
+
+      // 3. Within Knockout: Final -> Semifinal -> QF -> 16 Besar -> 32 Besar -> Play-off
+      if (aIsKo && bIsKo) {
+        const getRoundWeight = (r: string) => {
+          const lower = r.toLowerCase();
+          if (lower.includes('grand final')) return 100;
+          if (lower.includes('juara 3')) return 90;
+          if (lower.includes('semifinal')) return 80;
+          if (lower.includes('perempat') || lower.includes('8 besar')) return 70;
+          if (lower.includes('16 besar')) return 60;
+          if (lower.includes('32 besar')) return 50;
+          if (lower.includes('play')) return 40;
+          return 30;
+        };
+        const diffWeight = getRoundWeight(b.round) - getRoundWeight(a.round);
+        if (diffWeight !== 0) return diffWeight;
+      }
+
+      // 4. By Date and Match Number
+      if (a.date && b.date && a.date !== b.date) {
+        return a.date.localeCompare(b.date);
+      }
+      return (a.matchNumber || 0) - (b.matchNumber || 0);
     });
   }, [catMatches, selectedGroup, selectedStatus, searchQuery]);
 

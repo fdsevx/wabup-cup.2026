@@ -18,6 +18,7 @@ export const LiveScoreSection: React.FC = () => {
   const { matches, categories: tourneyCategories, config, isInitialLoading } = useTournament();
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'LIVE' | 'UPCOMING'>('ALL');
+  const [stageFilter, setStageFilter] = useState<'ALL' | 'KNOCKOUT' | 'GROUP'>('ALL');
 
   const bgConfig = config.sectionsBackgrounds?.liveScore;
   const isCustomImage = bgConfig?.mode === 'IMAGE';
@@ -28,17 +29,64 @@ export const LiveScoreSection: React.FC = () => {
     ...tourneyCategories.map(c => ({ id: c.id, label: c.name })),
   ];
 
+  const isKnockoutMatch = (m: (typeof matches)[0]) =>
+    !m.group ||
+    m.round.toLowerCase().includes('final') ||
+    m.round.toLowerCase().includes('besar') ||
+    m.round.toLowerCase().includes('play') ||
+    m.round.toLowerCase().includes('gugur');
+
   // Active / Upcoming matches only (FINISHED matches are archived to the bracket section)
   const activeAndUpcomingMatches = matches.filter(m => m.status !== 'FINISHED');
   const liveMatches = matches.filter(m => m.status === 'LIVE');
   const activeLiveMatch = liveMatches[0] || null;
 
-  // Filtered matches list
-  const filteredMatches = activeAndUpcomingMatches.filter(m => {
-    const matchCat = selectedCategory === 'ALL' || m.category === selectedCategory;
-    const matchStatus = statusFilter === 'ALL' || m.status === statusFilter;
-    return matchCat && matchStatus;
-  });
+  // Filtered and smart-sorted matches list (Prioritas: LIVE -> Babak Gugur -> Fase Grup)
+  const filteredMatches = activeAndUpcomingMatches
+    .filter(m => {
+      const matchCat = selectedCategory === 'ALL' || m.category === selectedCategory;
+      const matchStatus = statusFilter === 'ALL' || m.status === statusFilter;
+      const isKo = isKnockoutMatch(m);
+      const matchStage =
+        stageFilter === 'ALL' ||
+        (stageFilter === 'KNOCKOUT' && isKo) ||
+        (stageFilter === 'GROUP' && !isKo);
+      return matchCat && matchStatus && matchStage;
+    })
+    .sort((a, b) => {
+      // 1. LIVE matches always first
+      if (a.status === 'LIVE' && b.status !== 'LIVE') return -1;
+      if (b.status === 'LIVE' && a.status !== 'LIVE') return 1;
+
+      // 2. Knockout matches prioritized over Group matches
+      const aIsKo = isKnockoutMatch(a);
+      const bIsKo = isKnockoutMatch(b);
+      if (aIsKo && !bIsKo) return -1;
+      if (!aIsKo && bIsKo) return 1;
+
+      // 3. Within Knockout: Final -> Semifinal -> QF -> 16 Besar -> 32 Besar -> Play-off
+      if (aIsKo && bIsKo) {
+        const getRoundWeight = (r: string) => {
+          const lower = r.toLowerCase();
+          if (lower.includes('grand final')) return 100;
+          if (lower.includes('juara 3')) return 90;
+          if (lower.includes('semifinal')) return 80;
+          if (lower.includes('perempat') || lower.includes('8 besar')) return 70;
+          if (lower.includes('16 besar')) return 60;
+          if (lower.includes('32 besar')) return 50;
+          if (lower.includes('play')) return 40;
+          return 30;
+        };
+        const diffWeight = getRoundWeight(b.round) - getRoundWeight(a.round);
+        if (diffWeight !== 0) return diffWeight;
+      }
+
+      // 4. By Date and Match Number
+      if (a.date && b.date && a.date !== b.date) {
+        return a.date.localeCompare(b.date);
+      }
+      return (a.matchNumber || 0) - (b.matchNumber || 0);
+    });
 
   return (
     <section
@@ -191,18 +239,43 @@ export const LiveScoreSection: React.FC = () => {
         )}
 
         {/* CATEGORY SELECTOR PILLS */}
-        <div className="flex items-center space-x-2 overflow-x-auto pb-4 mb-6 scrollbar-none">
+        <div className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
           {categoriesList.map(cat => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
                 selectedCategory === cat.id
                   ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-950 shadow-md'
                   : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
               }`}
             >
               {cat.label}
+            </button>
+          ))}
+        </div>
+
+        {/* STAGE FILTER PILLS (BABAK GUGUR vs FASE GRUP) */}
+        <div className="flex items-center space-x-2 overflow-x-auto pb-4 mb-6 scrollbar-none">
+          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mr-1 shrink-0 uppercase tracking-wider">
+            Fase:
+          </span>
+          {[
+            { id: 'ALL', label: 'Semua Pertandingan' },
+            { id: 'KNOCKOUT', label: '⚡ Babak Gugur' },
+            { id: 'GROUP', label: 'Fase Grup' },
+          ].map(stg => (
+            <button
+              key={stg.id}
+              type="button"
+              onClick={() => setStageFilter(stg.id as any)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                stageFilter === stg.id
+                  ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+              }`}
+            >
+              {stg.label}
             </button>
           ))}
         </div>
