@@ -2134,6 +2134,14 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const grandFinalId = `match-${category.toLowerCase()}-final-${Date.now()}`;
     const thirdPlaceId = `match-${category.toLowerCase()}-3rd-${Date.now()}`;
+    const sf1Id = `match-${category.toLowerCase()}-sf-1-${Date.now()}`;
+    const sf2Id = `match-${category.toLowerCase()}-sf-2-${Date.now()}`;
+    const qfIds = [
+      `match-${category.toLowerCase()}-qf-1-${Date.now()}`,
+      `match-${category.toLowerCase()}-qf-2-${Date.now()}`,
+      `match-${category.toLowerCase()}-qf-3-${Date.now()}`,
+      `match-${category.toLowerCase()}-qf-4-${Date.now()}`,
+    ];
 
     const groupLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 

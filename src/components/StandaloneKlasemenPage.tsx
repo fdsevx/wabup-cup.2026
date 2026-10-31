@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useTournament } from '../context/TournamentContext';
-import { TournamentCategory, TeamStandingItem } from '../types';
+import { TournamentCategory, TeamStandingItem, MatchItem } from '../types';
 import {
   Trophy,
   Calendar,
