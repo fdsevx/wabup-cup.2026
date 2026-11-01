@@ -926,8 +926,8 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
             className={`flex items-center justify-between p-2 rounded-xl transition ${
               isTeamAWinner
                 ? isLight
-                  ? 'bg-emerald-50/90 border border-emerald-200'
-                  : 'bg-emerald-950/40 border border-emerald-500/30'
+                  ? 'bg-amber-50/90 border-2 border-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.25)]'
+                  : 'bg-amber-500/10 border-2 border-amber-400/80 shadow-[0_0_15px_rgba(251,191,36,0.25)]'
                 : isLight
                 ? 'bg-slate-50 border border-transparent'
                 : 'bg-slate-950/50 border border-white/5'
@@ -971,7 +971,7 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               {m.teamA.penalties !== undefined && m.status === 'FINISHED' && (
                 <span className="text-[10px] font-bold text-slate-400 mr-0.5">
                   (P:{m.teamA.penalties})
@@ -984,7 +984,7 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
                       ? 'text-slate-300'
                       : 'text-slate-600'
                     : isTeamAWinner
-                    ? 'text-emerald-400 font-black'
+                    ? 'text-amber-400 font-black'
                     : isLight
                     ? 'text-slate-700'
                     : 'text-slate-300'
@@ -993,7 +993,7 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
                 {m.status === 'UPCOMING' ? '-' : (m.teamA.score ?? 0)}
               </span>
               {isTeamAWinner && (
-                <span className="text-emerald-400 text-xs font-black">✓</span>
+                <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0 fill-amber-400/30" />
               )}
             </div>
           </div>
@@ -1003,8 +1003,8 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
             className={`flex items-center justify-between p-2 rounded-xl transition ${
               isTeamBWinner
                 ? isLight
-                  ? 'bg-emerald-50/90 border border-emerald-200'
-                  : 'bg-emerald-950/40 border border-emerald-500/30'
+                  ? 'bg-amber-50/90 border-2 border-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.25)]'
+                  : 'bg-amber-500/10 border-2 border-amber-400/80 shadow-[0_0_15px_rgba(251,191,36,0.25)]'
                 : isLight
                 ? 'bg-slate-50 border border-transparent'
                 : 'bg-slate-950/50 border border-white/5'
@@ -1048,7 +1048,7 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               {m.teamB.penalties !== undefined && m.status === 'FINISHED' && (
                 <span className="text-[10px] font-bold text-slate-400 mr-0.5">
                   (P:{m.teamB.penalties})
@@ -1061,7 +1061,7 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
                       ? 'text-slate-300'
                       : 'text-slate-600'
                     : isTeamBWinner
-                    ? 'text-emerald-400 font-black'
+                    ? 'text-amber-400 font-black'
                     : isLight
                     ? 'text-slate-700'
                     : 'text-slate-300'
@@ -1070,7 +1070,7 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
                 {m.status === 'UPCOMING' ? '-' : (m.teamB.score ?? 0)}
               </span>
               {isTeamBWinner && (
-                <span className="text-emerald-400 text-xs font-black">✓</span>
+                <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0 fill-amber-400/30" />
               )}
             </div>
           </div>
