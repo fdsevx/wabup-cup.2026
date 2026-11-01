@@ -437,7 +437,7 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
     return !isPlaceholderTeam(m.teamA) && !isPlaceholderTeam(m.teamB);
   };
 
-  // Upcoming matches (UPCOMING or LIVE), prioritized by LIVE -> Knockout -> Group -> Tanggal & Jam
+  // Upcoming matches (UPCOMING or LIVE), prioritized by LIVE -> Tanggal & Jam terdekat
   const upcomingMatches = useMemo(() => {
     const validMatches = catMatches.filter(hasRealTeams);
     const sorted = [...validMatches].sort((a, b) => {
@@ -445,19 +445,13 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
       if (a.status === 'LIVE' && b.status !== 'LIVE') return -1;
       if (b.status === 'LIVE' && a.status !== 'LIVE') return 1;
 
-      // 2. Knockout matches prioritized over Group matches
-      const aIsKo = isKnockoutMatch(a);
-      const bIsKo = isKnockoutMatch(b);
-      if (aIsKo && !bIsKo) return -1;
-      if (!aIsKo && bIsKo) return 1;
-
-      // 3. Tanggal & Jam
-      const dateA = a.date || '';
-      const dateB = b.date || '';
+      // 2. Tanggal & Jam terdekat ke yang masih lama
+      const dateA = a.date || '9999-99-99';
+      const dateB = b.date || '9999-99-99';
       if (dateA !== dateB) return dateA.localeCompare(dateB);
 
-      const timeA = a.time || '';
-      const timeB = b.time || '';
+      const timeA = a.time || '99:99';
+      const timeB = b.time || '99:99';
       if (timeA !== timeB) return timeA.localeCompare(timeB);
 
       return (a.matchNumber || 0) - (b.matchNumber || 0);
@@ -470,31 +464,32 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
     const validMatches = catMatches.filter(hasRealTeams);
     const live = validMatches.filter(m => m.status === 'LIVE');
     const upcoming = validMatches.filter(m => m.status === 'UPCOMING').sort((a, b) => {
-      const aIsKo = isKnockoutMatch(a);
-      const bIsKo = isKnockoutMatch(b);
-      if (aIsKo && !bIsKo) return -1;
-      if (!aIsKo && bIsKo) return 1;
-      const dateDiff = (a.date || '').localeCompare(b.date || '');
+      const dateDiff = (a.date || '9999-99-99').localeCompare(b.date || '9999-99-99');
       if (dateDiff !== 0) return dateDiff;
-      const timeDiff = (a.time || '').localeCompare(b.time || '');
+      const timeDiff = (a.time || '99:99').localeCompare(b.time || '99:99');
       if (timeDiff !== 0) return timeDiff;
       return (a.matchNumber || 0) - (b.matchNumber || 0);
     });
-    const finished = validMatches.filter(m => m.status === 'FINISHED').sort((a, b) => {
-      const aIsKo = isKnockoutMatch(a);
-      const bIsKo = isKnockoutMatch(b);
-      if (aIsKo && !bIsKo) return -1;
-      if (!aIsKo && bIsKo) return 1;
+    const finishedKnockout = validMatches.filter(m => m.status === 'FINISHED' && isKnockoutMatch(m)).sort((a, b) => {
       const dateDiff = (b.date || '').localeCompare(a.date || '');
       if (dateDiff !== 0) return dateDiff;
+      const timeDiff = (b.time || '').localeCompare(a.time || '');
+      if (timeDiff !== 0) return timeDiff;
       return (b.matchNumber || 0) - (a.matchNumber || 0);
     });
-    const combined = [...live, ...upcoming, ...finished];
+    const finishedGroup = validMatches.filter(m => m.status === 'FINISHED' && !isKnockoutMatch(m)).sort((a, b) => {
+      const dateDiff = (b.date || '').localeCompare(a.date || '');
+      if (dateDiff !== 0) return dateDiff;
+      const timeDiff = (b.time || '').localeCompare(a.time || '');
+      if (timeDiff !== 0) return timeDiff;
+      return (b.matchNumber || 0) - (a.matchNumber || 0);
+    });
+    const combined = [...live, ...upcoming, ...finishedKnockout, ...finishedGroup];
     return combined.slice(0, 6);
   }, [catMatches]);
 
   // Filtered matches for Jadwal & Hasil tab
-  // Aturan urut: LIVE terlebih dahulu -> UPCOMING (sesuai tanggal & jam, fase gugur di atas grup) -> FINISHED (fase gugur di atas grup)
+  // Aturan urut: LIVE -> JADWAL MENDATANG (terbaru/terdekat ke terlama) -> HASIL PERTANDINGAN BABAK (terbaru ke lama) -> HASIL FASE GROUP (terbaru ke terlama)
   const filteredMatches = useMemo(() => {
     const list = catMatches.filter(m => {
       // Sembunyikan laga jika nama tim belum definitif / masih placeholder
@@ -525,40 +520,79 @@ export const StandaloneKlasemenPage: React.FC<StandaloneKlasemenPageProps> = ({
     });
 
     return list.sort((a, b) => {
-      // 1. Urutan Status Utama: LIVE (1) -> UPCOMING (2) -> FINISHED (3)
-      const getStatusRank = (st: MatchStatus) => {
-        if (st === 'LIVE') return 1;
-        if (st === 'UPCOMING') return 2;
-        return 3; // FINISHED
+      // 1. Urutan Tier Utama:
+      // Tier 1: LIVE
+      // Tier 2: UPCOMING (Jadwal mendatang)
+      // Tier 3: FINISHED Babak (Hasil pertandingan babak gugur / knockout)
+      // Tier 4: FINISHED Fase Grup (Hasil pertandingan fase group)
+      const getMatchTier = (m: MatchItem): number => {
+        if (m.status === 'LIVE') return 1;
+        if (m.status === 'UPCOMING') return 2;
+        if (m.status === 'FINISHED' && isKnockoutMatch(m)) return 3;
+        return 4; // FINISHED Group Stage
       };
-      const rankA = getStatusRank(a.status);
-      const rankB = getStatusRank(b.status);
-      if (rankA !== rankB) {
-        return rankA - rankB;
+
+      const tierA = getMatchTier(a);
+      const tierB = getMatchTier(b);
+      if (tierA !== tierB) {
+        return tierA - tierB;
       }
 
-      // 2. Dalam status yang sama: Fase Gugur lebih dulu, Fase Grup di bawah
-      const aIsKo = isKnockoutMatch(a);
-      const bIsKo = isKnockoutMatch(b);
-      if (aIsKo && !bIsKo) return -1;
-      if (!aIsKo && bIsKo) return 1;
+      // 2. Dalam Tier yang sama:
+      // A. LIVE: Urutkan berdasarkan menit live atau tanggal & jam
+      if (tierA === 1) {
+        if ((a.liveMinute || 0) !== (b.liveMinute || 0)) {
+          return (b.liveMinute || 0) - (a.liveMinute || 0);
+        }
+        const dateDiff = (a.date || '').localeCompare(b.date || '');
+        if (dateDiff !== 0) return dateDiff;
+        const timeDiff = (a.time || '').localeCompare(b.time || '');
+        if (timeDiff !== 0) return timeDiff;
+        return (a.matchNumber || 0) - (b.matchNumber || 0);
+      }
 
-      // 3. Dalam fase yang sama: Urutkan sesuai Tanggal Kickoff
+      // B. JADWAL (UPCOMING): Urutkan terbaru ke terlama (tanggal & jam terdekat / segera bertanding ke yang masih lama)
+      if (tierA === 2) {
+        const dateA = a.date || '9999-99-99';
+        const dateB = b.date || '9999-99-99';
+        if (dateA !== dateB) {
+          return dateA.localeCompare(dateB);
+        }
+        const timeA = a.time || '99:99';
+        const timeB = b.time || '99:99';
+        if (timeA !== timeB) {
+          return timeA.localeCompare(timeB);
+        }
+        return (a.matchNumber || 0) - (b.matchNumber || 0);
+      }
+
+      // C. HASIL PERTANDINGAN BABAK (FINISHED KNOCKOUT): Urutkan dari terbaru ke lama (tanggal & jam terkini / descending)
+      if (tierA === 3) {
+        const dateA = a.date || '';
+        const dateB = b.date || '';
+        if (dateA !== dateB) {
+          return dateB.localeCompare(dateA);
+        }
+        const timeA = a.time || '';
+        const timeB = b.time || '';
+        if (timeA !== timeB) {
+          return timeB.localeCompare(timeA);
+        }
+        return (b.matchNumber || 0) - (a.matchNumber || 0);
+      }
+
+      // D. HASIL FASE GROUP (FINISHED GROUP): Urutkan dari terbaru ke terlama (tanggal & jam terkini / descending)
       const dateA = a.date || '';
       const dateB = b.date || '';
       if (dateA !== dateB) {
-        return dateA.localeCompare(dateB);
+        return dateB.localeCompare(dateA);
       }
-
-      // 4. Urutkan sesuai Jam Kickoff
       const timeA = a.time || '';
       const timeB = b.time || '';
       if (timeA !== timeB) {
-        return timeA.localeCompare(timeB);
+        return timeB.localeCompare(timeA);
       }
-
-      // 5. Terakhir urutkan Nomor Pertandingan
-      return (a.matchNumber || 0) - (b.matchNumber || 0);
+      return (b.matchNumber || 0) - (a.matchNumber || 0);
     });
   }, [catMatches, selectedGroup, selectedStatus, searchQuery]);
 
