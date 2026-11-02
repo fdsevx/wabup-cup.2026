@@ -281,6 +281,7 @@ interface TournamentContextType {
   matches: MatchItem[];
   addMatch: (match: Omit<MatchItem, 'id'>) => void;
   updateMatch: (match: MatchItem) => void;
+  saveMatchesBatch: (matches: MatchItem[]) => Promise<void>;
   deleteMatch: (matchId: string) => void;
   refreshMatches: () => Promise<void>;
   randomizeMatchesForCategory: (
@@ -1550,6 +1551,29 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     ApiService.saveMatch(matchWithWinner).catch(err =>
       console.warn('Could not sync match update to backend:', err)
     );
+  };
+
+  const saveMatchesBatch = async (matchesToSave: MatchItem[]) => {
+    if (!matchesToSave || matchesToSave.length === 0) return;
+    setMatches(prev => {
+      const map = new Map(matchesToSave.map(m => [m.id, m]));
+      const next = prev.map(m => map.get(m.id) || m);
+      for (const m of matchesToSave) {
+        if (!prev.some(p => p.id === m.id)) {
+          next.push(m);
+        }
+      }
+      safeLocalStorageSet('wabupcup_matches', JSON.stringify(next));
+      const nextStandings = computeStandingsFromData(next, groups, registrations);
+      setStandings(nextStandings);
+      safeLocalStorageSet('wabupcup_standings', JSON.stringify(nextStandings));
+      return next;
+    });
+    try {
+      await ApiService.saveMatchesBatch(matchesToSave);
+    } catch (err) {
+      console.warn('Could not save matches batch to backend:', err);
+    }
   };
 
   const deleteMatch = (matchId: string) => {
@@ -4164,6 +4188,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         matches,
         addMatch,
         updateMatch,
+        saveMatchesBatch,
         deleteMatch,
         refreshMatches,
         randomizeMatchesForCategory,

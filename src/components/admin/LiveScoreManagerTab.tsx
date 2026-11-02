@@ -36,6 +36,7 @@ export const LiveScoreManagerTab: React.FC = () => {
     matches,
     updateMatchLiveScore,
     updateMatch,
+    saveMatchesBatch,
     deleteMatch,
     addMatch,
     categories,
@@ -150,6 +151,8 @@ export const LiveScoreManagerTab: React.FC = () => {
     time: string;
     teamAName: string;
     teamBName: string;
+    nextMatchId?: string;
+    nextMatchSlot?: 'A' | 'B';
   } | null>(null);
 
   // Event Logger Modal (Goal & Foul Cards)
@@ -168,6 +171,57 @@ export const LiveScoreManagerTab: React.FC = () => {
     return registrations
       .filter(r => r.category === cat && r.status === 'APPROVED')
       .sort((a, b) => a.teamName.localeCompare(b.teamName));
+  };
+
+  // Helper to find a source match by match number or by round name
+  const findSourceMatch = (query: string, category: string, currentMatchId?: string): MatchItem | undefined => {
+    if (!query) return undefined;
+    const catMatches = matches.filter(m => m.category === category && m.id !== currentMatchId);
+
+    // 1. Try matchNumber from "Pemenang Match 62", "Winner Match #52", "Match 62", etc.
+    const numMatch = query.match(/(?:Match|Pertandingan)?\s*#?\s*(\d+)/i);
+    if (numMatch) {
+      const num = parseInt(numMatch[1], 10);
+      const byNum = catMatches.find(m => m.matchNumber === num);
+      if (byNum) return byNum;
+    }
+
+    // 2. Try round name match from "Pemenang Babak 34 Besar - Match 1", etc.
+    const cleanQuery = query
+      .replace(/^(?:Pemenang|Winner)\s+/i, '')
+      .trim()
+      .toLowerCase();
+
+    if (cleanQuery) {
+      const byRound = catMatches.find(
+        m =>
+          m.round.toLowerCase().trim() === cleanQuery ||
+          m.round.toLowerCase().includes(cleanQuery) ||
+          cleanQuery.includes(m.round.toLowerCase())
+      );
+      if (byRound) return byRound;
+    }
+
+    return undefined;
+  };
+
+  // List of other matches in the same category that could feed into this match or be selected as winner
+  const getCandidateSourceMatches = (cat: string, currentMatchId?: string) => {
+    return matches
+      .filter(m => m.category === cat && m.id !== currentMatchId)
+      .sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
+  };
+
+  // List of subsequent knockout matches in the same category that this match could lead to
+  const getCandidateNextMatches = (cat: string, currentMatchNumber?: number, currentMatchId?: string) => {
+    return matches
+      .filter(m => {
+        if (m.category !== cat) return false;
+        if (m.id === currentMatchId) return false;
+        if (currentMatchNumber && (m.matchNumber || 0) <= currentMatchNumber) return false;
+        return isKnockoutMatch(m);
+      })
+      .sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
   };
 
   // Helper to check if the exact same fixture already exists in the same category, round, and group
@@ -515,14 +569,16 @@ export const LiveScoreManagerTab: React.FC = () => {
       pitch: m.pitch || DEFAULT_PITCH,
       date: m.date || new Date().toISOString().split('T')[0],
       time: m.time || '08:00',
-      teamAName: m.teamA.name,
-      teamBName: m.teamB.name,
+      teamAName: m.teamA?.name || '',
+      teamBName: m.teamB?.name || '',
+      nextMatchId: m.nextMatchId || '',
+      nextMatchSlot: m.nextMatchSlot || 'A',
     });
     setScheduleWarning(null);
   };
 
   // Save Edit Match Form
-  const handleSaveEditMatch = (e: React.FormEvent) => {
+  const handleSaveEditMatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMatch || !editMatchForm) return;
 
@@ -557,10 +613,165 @@ export const LiveScoreManagerTab: React.FC = () => {
       return;
     }
 
-    const teamAReg = registrations.find(r => r.teamName === teamAName);
-    const teamBReg = registrations.find(r => r.teamName === teamBName);
+    const affectedMatchesMap = new Map<string, MatchItem>();
 
-    const updated: MatchItem = {
+    // 1. Resolve Team A
+    let resolvedTeamA = { ...editingMatch.teamA, name: teamAName };
+    const isWinnerA = /^(?:Pemenang|Winner)\s+/i.test(teamAName);
+    let srcA: MatchItem | undefined;
+
+    if (isWinnerA) {
+      srcA = findSourceMatch(teamAName, editMatchForm.category, editingMatch.id);
+      if (srcA) {
+        const updatedSrcA: MatchItem = {
+          ...srcA,
+          nextMatchId: editingMatch.id,
+          nextMatchSlot: 'A',
+        };
+        affectedMatchesMap.set(updatedSrcA.id, updatedSrcA);
+
+        if (srcA.status === 'FINISHED' && (srcA.winnerId === 'A' || srcA.winnerId === 'B')) {
+          const winning = srcA.winnerId === 'A' ? srcA.teamA : srcA.teamB;
+          resolvedTeamA = {
+            ...resolvedTeamA,
+            name: winning.name,
+            logo: winning.logo,
+            institution: winning.institution,
+          };
+        } else {
+          resolvedTeamA = {
+            ...resolvedTeamA,
+            name: teamAName,
+            logo: undefined,
+            institution: `Menunggu Hasil Match #${srcA.matchNumber}`,
+          };
+        }
+      } else {
+        resolvedTeamA = {
+          ...resolvedTeamA,
+          name: teamAName,
+          logo: undefined,
+          institution: 'TBD',
+        };
+      }
+    } else {
+      const regA = registrations.find(
+        r => r.category === editMatchForm.category && r.teamName.toLowerCase() === teamAName.toLowerCase()
+      );
+      if (regA) {
+        resolvedTeamA = {
+          ...resolvedTeamA,
+          name: regA.teamName,
+          logo: regA.teamLogo,
+          institution: regA.institutionName,
+        };
+      } else {
+        const isGroup = /^(?:Juara|Runner-?up|Peringkat)/i.test(teamAName);
+        resolvedTeamA = {
+          ...resolvedTeamA,
+          name: teamAName,
+          logo: undefined,
+          institution: isGroup ? 'Menunggu Hasil Grup' : 'TBD',
+        };
+      }
+    }
+
+    // 2. Resolve Team B
+    let resolvedTeamB = { ...editingMatch.teamB, name: teamBName };
+    const isWinnerB = /^(?:Pemenang|Winner)\s+/i.test(teamBName);
+    let srcB: MatchItem | undefined;
+
+    if (isWinnerB) {
+      srcB = findSourceMatch(teamBName, editMatchForm.category, editingMatch.id);
+      if (srcB) {
+        const updatedSrcB: MatchItem = {
+          ...srcB,
+          nextMatchId: editingMatch.id,
+          nextMatchSlot: 'B',
+        };
+        affectedMatchesMap.set(updatedSrcB.id, updatedSrcB);
+
+        if (srcB.status === 'FINISHED' && (srcB.winnerId === 'A' || srcB.winnerId === 'B')) {
+          const winning = srcB.winnerId === 'A' ? srcB.teamA : srcB.teamB;
+          resolvedTeamB = {
+            ...resolvedTeamB,
+            name: winning.name,
+            logo: winning.logo,
+            institution: winning.institution,
+          };
+        } else {
+          resolvedTeamB = {
+            ...resolvedTeamB,
+            name: teamBName,
+            logo: undefined,
+            institution: `Menunggu Hasil Match #${srcB.matchNumber}`,
+          };
+        }
+      } else {
+        resolvedTeamB = {
+          ...resolvedTeamB,
+          name: teamBName,
+          logo: undefined,
+          institution: 'TBD',
+        };
+      }
+    } else {
+      const regB = registrations.find(
+        r => r.category === editMatchForm.category && r.teamName.toLowerCase() === teamBName.toLowerCase()
+      );
+      if (regB) {
+        resolvedTeamB = {
+          ...resolvedTeamB,
+          name: regB.teamName,
+          logo: regB.teamLogo,
+          institution: regB.institutionName,
+        };
+      } else {
+        const isGroup = /^(?:Juara|Runner-?up|Peringkat)/i.test(teamBName);
+        resolvedTeamB = {
+          ...resolvedTeamB,
+          name: teamBName,
+          logo: undefined,
+          institution: isGroup ? 'Menunggu Hasil Grup' : 'TBD',
+        };
+      }
+    }
+
+    // Disconnect any older matches that pointed to editingMatch Slot A or B if they are no longer srcA/srcB
+    matches.forEach(m => {
+      if (m.category === editMatchForm.category && m.nextMatchId === editingMatch.id) {
+        if (m.nextMatchSlot === 'A' && (!srcA || m.id !== srcA.id)) {
+          affectedMatchesMap.set(m.id, { ...m, nextMatchId: undefined, nextMatchSlot: undefined });
+        }
+        if (m.nextMatchSlot === 'B' && (!srcB || m.id !== srcB.id)) {
+          affectedMatchesMap.set(m.id, { ...m, nextMatchId: undefined, nextMatchSlot: undefined });
+        }
+      }
+    });
+
+    // 3. Resolve editingMatch nextMatchId & nextMatchSlot
+    const nextMatchId = editMatchForm.nextMatchId?.trim() || undefined;
+    const nextMatchSlot = nextMatchId ? (editMatchForm.nextMatchSlot || 'A') : undefined;
+
+    // If editingMatch had an older nextMatchId that was changed or cleared:
+    if (editingMatch.nextMatchId && editingMatch.nextMatchId !== nextMatchId) {
+      const oldTarget = matches.find(m => m.id === editingMatch.nextMatchId);
+      if (oldTarget) {
+        const slot = editingMatch.nextMatchSlot === 'B' ? 'teamB' : 'teamA';
+        const revertedTarget: MatchItem = {
+          ...oldTarget,
+          [slot]: {
+            ...oldTarget[slot],
+            name: `Pemenang Match ${editingMatch.matchNumber}`,
+            institution: 'TBD',
+            logo: undefined,
+          },
+        };
+        affectedMatchesMap.set(revertedTarget.id, revertedTarget);
+      }
+    }
+
+    const updatedMatch: MatchItem = {
       ...editingMatch,
       category: editMatchForm.category,
       round: editMatchForm.round.trim(),
@@ -568,31 +779,49 @@ export const LiveScoreManagerTab: React.FC = () => {
       pitch: editMatchForm.pitch.trim() || DEFAULT_PITCH,
       date: editMatchForm.date,
       time: editMatchForm.time,
-      teamA: {
-        ...editingMatch.teamA,
-        name: teamAName,
-        logo: teamAReg?.teamLogo || editingMatch.teamA.logo,
-        institution: teamAReg?.institutionName || editingMatch.teamA.institution,
-      },
-      teamB: {
-        ...editingMatch.teamB,
-        name: teamBName,
-        logo: teamBReg?.teamLogo || editingMatch.teamB.logo,
-        institution: teamBReg?.institutionName || editingMatch.teamB.institution,
-      },
+      teamA: resolvedTeamA,
+      teamB: resolvedTeamB,
+      nextMatchId,
+      nextMatchSlot,
     };
+    affectedMatchesMap.set(updatedMatch.id, updatedMatch);
 
-    updateMatch(updated);
+    // If editingMatch is FINISHED and has winner, push winner to new target
+    if (
+      updatedMatch.status === 'FINISHED' &&
+      (updatedMatch.winnerId === 'A' || updatedMatch.winnerId === 'B') &&
+      nextMatchId
+    ) {
+      const winningTeam = updatedMatch.winnerId === 'A' ? resolvedTeamA : resolvedTeamB;
+      const targetMatch = matches.find(m => m.id === nextMatchId);
+      if (targetMatch) {
+        const slot = nextMatchSlot === 'B' ? 'teamB' : 'teamA';
+        const updatedTarget: MatchItem = {
+          ...targetMatch,
+          [slot]: {
+            ...targetMatch[slot],
+            name: winningTeam.name,
+            institution: winningTeam.institution,
+            logo: winningTeam.logo,
+          },
+        };
+        affectedMatchesMap.set(updatedTarget.id, updatedTarget);
+      }
+    }
+
+    const matchesToSave = Array.from(affectedMatchesMap.values());
+    await saveMatchesBatch(matchesToSave);
+
     setLocalScores(prev => {
       const next = { ...prev };
-      if (next[updated.id]) {
-        next[updated.id] = {
-          ...next[updated.id],
-          scoreA: updated.teamA.score ?? 0,
-          scoreB: updated.teamB.score ?? 0,
-          status: updated.status,
-          liveMinute: updated.liveMinute || '',
-          events: updated.events || [],
+      if (next[updatedMatch.id]) {
+        next[updatedMatch.id] = {
+          ...next[updatedMatch.id],
+          scoreA: updatedMatch.teamA.score ?? 0,
+          scoreB: updatedMatch.teamB.score ?? 0,
+          status: updatedMatch.status,
+          liveMinute: updatedMatch.liveMinute || '',
+          events: updatedMatch.events || [],
         };
       }
       return next;
@@ -600,8 +829,8 @@ export const LiveScoreManagerTab: React.FC = () => {
     setEditingMatch(null);
     setEditMatchForm(null);
     setScheduleWarning(null);
-    setSuccessMsg(`Jadwal Match #${updated.matchNumber} berhasil diperbarui!`);
-    setTimeout(() => setSuccessMsg(null), 3000);
+    setSuccessMsg(`Jadwal Match #${updatedMatch.matchNumber} (${resolvedTeamA.name} vs ${resolvedTeamB.name}) berhasil disimpan & ditautkan!`);
+    setTimeout(() => setSuccessMsg(null), 3500);
   };
 
   // Create New Match
@@ -646,13 +875,13 @@ export const LiveScoreManagerTab: React.FC = () => {
         name: teamAName,
         score: Number(newMatchData.teamA?.score || 0),
         logo: teamAReg?.teamLogo,
-        institution: teamAReg?.institutionName,
+        institution: teamAReg?.institutionName || (/^(?:Juara|Runner|Pemenang)/i.test(teamAName) ? 'Menunggu Hasil' : 'TBD'),
       },
       teamB: {
         name: teamBName,
         score: Number(newMatchData.teamB?.score || 0),
         logo: teamBReg?.teamLogo,
-        institution: teamBReg?.institutionName,
+        institution: teamBReg?.institutionName || (/^(?:Juara|Runner|Pemenang)/i.test(teamBName) ? 'Menunggu Hasil' : 'TBD'),
       },
       date: newMatchData.date || new Date().toISOString().split('T')[0],
       time: newMatchData.time || '08:00',
@@ -2798,93 +3027,153 @@ export const LiveScoreManagerTab: React.FC = () => {
                 />
               </div>
 
-              {/* Nama Tim A (Dropdown Approved) */}
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Nama Tim A (Status Approved):</label>
+              {/* Nama Tim A */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block font-semibold text-slate-300">Tim A:</label>
+                  <span className="text-[10px] text-blue-400 font-medium">Bisa ketik bebas atau pilih cepat</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Contoh: Pemenang Match 62 atau nama tim"
+                  value={newMatchData.teamA?.name || ''}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setScheduleWarning(null);
+                    setNewMatchData(prev => ({
+                      ...prev,
+                      teamA: { ...prev.teamA!, name: val },
+                    }));
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-medium focus:border-blue-500 focus:outline-none"
+                  required
+                />
                 {(() => {
                   const currentCat = newMatchData.category || 'SMA';
                   const approved = getApprovedTeams(currentCat);
+                  const candidateSources = getCandidateSourceMatches(currentCat);
+                  const groupsList = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
 
-                  return approved.length === 0 ? (
-                    <p className="text-[11px] text-amber-400 bg-amber-950/40 p-2 rounded-xl border border-amber-800/40">
-                      Belum ada tim berstatus APPROVED di kategori {currentCat}.
-                    </p>
-                  ) : (
+                  return (
                     <select
-                      value={newMatchData.teamA?.name || ''}
+                      value=""
                       onChange={e => {
                         const val = e.target.value;
+                        if (!val) return;
                         setScheduleWarning(null);
                         setNewMatchData(prev => ({
                           ...prev,
                           teamA: { ...prev.teamA!, name: val },
                         }));
                       }}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white cursor-pointer"
-                      required
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300 text-[11px] cursor-pointer hover:bg-slate-800 transition"
                     >
-                      <option value="">-- Pilih Tim A --</option>
-                      {approved.map(t => {
-                        const isOther =
-                          t.teamName.trim().toLowerCase() ===
-                          (newMatchData.teamB?.name || '').trim().toLowerCase();
-                        return (
-                          <option
-                            key={t.id}
-                            value={t.teamName}
-                            disabled={isOther}
-                            className={isOther ? 'text-slate-500' : 'text-white'}
-                          >
-                            {t.teamName} {isOther ? '(Dipilih di Tim B)' : t.institutionName ? `(${t.institutionName})` : '✓'}
-                          </option>
-                        );
-                      })}
+                      <option value="">⚡ Pilih Cepat Opsi Tim A...</option>
+
+                      {candidateSources.length > 0 && (
+                        <optgroup label="🏆 Pemenang Pertandingan">
+                          {candidateSources.map(sm => (
+                            <option key={`new-src-a-${sm.id}`} value={`Pemenang Match ${sm.matchNumber}`}>
+                              Pemenang Match #{sm.matchNumber} ({sm.round}: {sm.teamA?.name || 'TBD'} vs {sm.teamB?.name || 'TBD'})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {approved.length > 0 && (
+                        <optgroup label="👥 Tim Resmi Terdaftar (Approved)">
+                          {approved.map(t => (
+                            <option key={`new-app-a-${t.id}`} value={t.teamName}>
+                              {t.teamName} {t.institutionName ? `(${t.institutionName})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      <optgroup label="📋 Slot Hasil Grup (Placeholder)">
+                        {groupsList.map(g => (
+                          <React.Fragment key={`new-grp-a-${g}`}>
+                            <option value={`Juara Grup ${g}`}>Juara Grup {g}</option>
+                            <option value={`Runner-up Grup ${g}`}>Runner-up Grup {g}</option>
+                          </React.Fragment>
+                        ))}
+                      </optgroup>
                     </select>
                   );
                 })()}
               </div>
 
-              {/* Nama Tim B (Dropdown Approved) */}
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Nama Tim B (Status Approved):</label>
+              {/* Nama Tim B */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block font-semibold text-slate-300">Tim B:</label>
+                  <span className="text-[10px] text-blue-400 font-medium">Bisa ketik bebas atau pilih cepat</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Contoh: Pemenang Match 52 atau nama tim"
+                  value={newMatchData.teamB?.name || ''}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setScheduleWarning(null);
+                    setNewMatchData(prev => ({
+                      ...prev,
+                      teamB: { ...prev.teamB!, name: val },
+                    }));
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-medium focus:border-blue-500 focus:outline-none"
+                  required
+                />
                 {(() => {
                   const currentCat = newMatchData.category || 'SMA';
                   const approved = getApprovedTeams(currentCat);
+                  const candidateSources = getCandidateSourceMatches(currentCat);
+                  const groupsList = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
 
-                  return approved.length === 0 ? (
-                    <p className="text-[11px] text-amber-400 bg-amber-950/40 p-2 rounded-xl border border-amber-800/40">
-                      Belum ada tim berstatus APPROVED di kategori {currentCat}.
-                    </p>
-                  ) : (
+                  return (
                     <select
-                      value={newMatchData.teamB?.name || ''}
+                      value=""
                       onChange={e => {
                         const val = e.target.value;
+                        if (!val) return;
                         setScheduleWarning(null);
                         setNewMatchData(prev => ({
                           ...prev,
                           teamB: { ...prev.teamB!, name: val },
                         }));
                       }}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white cursor-pointer"
-                      required
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300 text-[11px] cursor-pointer hover:bg-slate-800 transition"
                     >
-                      <option value="">-- Pilih Tim B --</option>
-                      {approved.map(t => {
-                        const isOther =
-                          t.teamName.trim().toLowerCase() ===
-                          (newMatchData.teamA?.name || '').trim().toLowerCase();
-                        return (
-                          <option
-                            key={t.id}
-                            value={t.teamName}
-                            disabled={isOther}
-                            className={isOther ? 'text-slate-500' : 'text-white'}
-                          >
-                            {t.teamName} {isOther ? '(Dipilih di Tim A)' : t.institutionName ? `(${t.institutionName})` : '✓'}
-                          </option>
-                        );
-                      })}
+                      <option value="">⚡ Pilih Cepat Opsi Tim B...</option>
+
+                      {candidateSources.length > 0 && (
+                        <optgroup label="🏆 Pemenang Pertandingan">
+                          {candidateSources.map(sm => (
+                            <option key={`new-src-b-${sm.id}`} value={`Pemenang Match ${sm.matchNumber}`}>
+                              Pemenang Match #{sm.matchNumber} ({sm.round}: {sm.teamA?.name || 'TBD'} vs {sm.teamB?.name || 'TBD'})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {approved.length > 0 && (
+                        <optgroup label="👥 Tim Resmi Terdaftar (Approved)">
+                          {approved.map(t => (
+                            <option key={`new-app-b-${t.id}`} value={t.teamName}>
+                              {t.teamName} {t.institutionName ? `(${t.institutionName})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      <optgroup label="📋 Slot Hasil Grup (Placeholder)">
+                        {groupsList.map(g => (
+                          <React.Fragment key={`new-grp-b-${g}`}>
+                            <option value={`Juara Grup ${g}`}>Juara Grup {g}</option>
+                            <option value={`Runner-up Grup ${g}`}>Runner-up Grup {g}</option>
+                          </React.Fragment>
+                        ))}
+                      </optgroup>
                     </select>
                   );
                 })()}
@@ -3037,76 +3326,136 @@ export const LiveScoreManagerTab: React.FC = () => {
               </div>
 
               {/* Tim A */}
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Tim A (Approved):</label>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block font-semibold text-slate-300">Tim A:</label>
+                  <span className="text-[10px] text-blue-400 font-medium">Bisa ketik bebas atau pilih cepat</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Contoh: Pemenang Match 62 atau nama tim"
+                  value={editMatchForm.teamAName}
+                  onChange={e => {
+                    setScheduleWarning(null);
+                    setEditMatchForm({ ...editMatchForm, teamAName: e.target.value });
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-medium focus:border-blue-500 focus:outline-none"
+                  required
+                />
                 {(() => {
                   const approved = getApprovedTeams(editMatchForm.category);
+                  const candidateSources = getCandidateSourceMatches(editMatchForm.category, editingMatch.id);
+                  const groupsList = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
 
                   return (
                     <select
-                      value={editMatchForm.teamAName}
+                      value=""
                       onChange={e => {
                         const val = e.target.value;
+                        if (!val) return;
                         setScheduleWarning(null);
                         setEditMatchForm({ ...editMatchForm, teamAName: val });
                       }}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white cursor-pointer"
-                      required
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300 text-[11px] cursor-pointer hover:bg-slate-800 transition"
                     >
-                      <option value="">-- Pilih Tim A --</option>
-                      {approved.map(t => {
-                        const isOther =
-                          t.teamName.trim().toLowerCase() ===
-                          (editMatchForm.teamBName || '').trim().toLowerCase();
-                        return (
-                          <option
-                            key={t.id}
-                            value={t.teamName}
-                            disabled={isOther}
-                            className={isOther ? 'text-slate-500' : 'text-white'}
-                          >
-                            {t.teamName} {isOther ? '(Dipilih di Tim B)' : t.institutionName ? `(${t.institutionName})` : '✓'}
-                          </option>
-                        );
-                      })}
+                      <option value="">⚡ Pilih Cepat Opsi Tim A...</option>
+
+                      {candidateSources.length > 0 && (
+                        <optgroup label="🏆 Pemenang Pertandingan">
+                          {candidateSources.map(sm => (
+                            <option key={`src-a-${sm.id}`} value={`Pemenang Match ${sm.matchNumber}`}>
+                              Pemenang Match #{sm.matchNumber} ({sm.round}: {sm.teamA?.name || 'TBD'} vs {sm.teamB?.name || 'TBD'})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {approved.length > 0 && (
+                        <optgroup label="👥 Tim Resmi Terdaftar (Approved)">
+                          {approved.map(t => (
+                            <option key={`app-a-${t.id}`} value={t.teamName}>
+                              {t.teamName} {t.institutionName ? `(${t.institutionName})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      <optgroup label="📋 Slot Hasil Grup (Placeholder)">
+                        {groupsList.map(g => (
+                          <React.Fragment key={`grp-a-${g}`}>
+                            <option value={`Juara Grup ${g}`}>Juara Grup {g}</option>
+                            <option value={`Runner-up Grup ${g}`}>Runner-up Grup {g}</option>
+                          </React.Fragment>
+                        ))}
+                      </optgroup>
                     </select>
                   );
                 })()}
               </div>
 
               {/* Tim B */}
-              <div>
-                <label className="block font-semibold text-slate-300 mb-1">Tim B (Approved):</label>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block font-semibold text-slate-300">Tim B:</label>
+                  <span className="text-[10px] text-blue-400 font-medium">Bisa ketik bebas atau pilih cepat</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Contoh: Pemenang Match 52 atau nama tim"
+                  value={editMatchForm.teamBName}
+                  onChange={e => {
+                    setScheduleWarning(null);
+                    setEditMatchForm({ ...editMatchForm, teamBName: e.target.value });
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-medium focus:border-blue-500 focus:outline-none"
+                  required
+                />
                 {(() => {
                   const approved = getApprovedTeams(editMatchForm.category);
+                  const candidateSources = getCandidateSourceMatches(editMatchForm.category, editingMatch.id);
+                  const groupsList = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'];
 
                   return (
                     <select
-                      value={editMatchForm.teamBName}
+                      value=""
                       onChange={e => {
                         const val = e.target.value;
+                        if (!val) return;
                         setScheduleWarning(null);
                         setEditMatchForm({ ...editMatchForm, teamBName: val });
                       }}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white cursor-pointer"
-                      required
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300 text-[11px] cursor-pointer hover:bg-slate-800 transition"
                     >
-                      <option value="">-- Pilih Tim B --</option>
-                      {approved.map(t => {
-                        const isOther =
-                          t.teamName.trim().toLowerCase() ===
-                          (editMatchForm.teamAName || '').trim().toLowerCase();
-                        return (
-                          <option
-                            key={t.id}
-                            value={t.teamName}
-                            disabled={isOther}
-                            className={isOther ? 'text-slate-500' : 'text-white'}
-                          >
-                            {t.teamName} {isOther ? '(Dipilih di Tim A)' : t.institutionName ? `(${t.institutionName})` : '✓'}
-                          </option>
-                        );
-                      })}
+                      <option value="">⚡ Pilih Cepat Opsi Tim B...</option>
+
+                      {candidateSources.length > 0 && (
+                        <optgroup label="🏆 Pemenang Pertandingan">
+                          {candidateSources.map(sm => (
+                            <option key={`src-b-${sm.id}`} value={`Pemenang Match ${sm.matchNumber}`}>
+                              Pemenang Match #{sm.matchNumber} ({sm.round}: {sm.teamA?.name || 'TBD'} vs {sm.teamB?.name || 'TBD'})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      {approved.length > 0 && (
+                        <optgroup label="👥 Tim Resmi Terdaftar (Approved)">
+                          {approved.map(t => (
+                            <option key={`app-b-${t.id}`} value={t.teamName}>
+                              {t.teamName} {t.institutionName ? `(${t.institutionName})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+
+                      <optgroup label="📋 Slot Hasil Grup (Placeholder)">
+                        {groupsList.map(g => (
+                          <React.Fragment key={`grp-b-${g}`}>
+                            <option value={`Juara Grup ${g}`}>Juara Grup {g}</option>
+                            <option value={`Runner-up Grup ${g}`}>Runner-up Grup {g}</option>
+                          </React.Fragment>
+                        ))}
+                      </optgroup>
                     </select>
                   );
                 })()}
@@ -3147,6 +3496,54 @@ export const LiveScoreManagerTab: React.FC = () => {
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
                   required
                 />
+              </div>
+
+              {/* Alur Lolos / Bracket Pathway */}
+              <div className="sm:col-span-2 p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Alur Pemenang Melaju Ke (Bagan Knockout):</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400">Opsional untuk babak gugur</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2">
+                    <select
+                      value={editMatchForm.nextMatchId || ''}
+                      onChange={e => {
+                        setEditMatchForm({
+                          ...editMatchForm,
+                          nextMatchId: e.target.value || undefined,
+                        });
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white cursor-pointer text-xs"
+                    >
+                      <option value="">-- Tidak Ditentukan / Babak Final --</option>
+                      {getCandidateNextMatches(editMatchForm.category, editingMatch.matchNumber, editingMatch.id).map(nm => (
+                        <option key={`next-${nm.id}`} value={nm.id}>
+                          Match #{nm.matchNumber} - {nm.round}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <select
+                      value={editMatchForm.nextMatchSlot || 'A'}
+                      onChange={e => {
+                        setEditMatchForm({
+                          ...editMatchForm,
+                          nextMatchSlot: e.target.value as 'A' | 'B',
+                        });
+                      }}
+                      disabled={!editMatchForm.nextMatchId}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white cursor-pointer text-xs disabled:opacity-50"
+                    >
+                      <option value="A">Di Slot Tim A</option>
+                      <option value="B">Di Slot Tim B</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
 
